@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --ink: #0f172a;
+  --ink-muted: #64748b;
+  --primary: #2563eb;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  border-color: var(--border);
+}
+
+@layer components {
+  .glass {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+  }
+
+  .card-base {
+    @apply bg-card rounded-3xl border border-border shadow-soft;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-primary text-white font-semibold rounded-2xl px-5 h-12 transition-all duration-200 hover:bg-primary-700 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 bg-white text-ink font-semibold rounded-2xl px-5 h-12 border border-border transition-all duration-200 hover:bg-slate-50 active:scale-[0.99];
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 bg-danger text-white font-semibold rounded-2xl px-5 h-12 transition-all duration-200 hover:opacity-90 active:scale-[0.99];
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 text-ink font-medium rounded-2xl px-4 h-10 transition-all hover:bg-slate-100;
+  }
+
+  .input-base {
+    @apply w-full h-14 rounded-2xl border border-border bg-white px-4 text-[15px] text-ink placeholder:text-ink-muted outline-none transition-all focus:border-primary focus:shadow-ring;
+  }
+
+  .label-base {
+    @apply text-sm font-medium text-ink-muted mb-1.5 block;
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      #eef2f7 0%,
+      #f8fafc 40%,
+      #eef2f7 80%
+    );
+    background-size: 1000px 100%;
+    @apply animate-shimmer rounded-xl;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
