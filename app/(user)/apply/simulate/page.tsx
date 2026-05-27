@@ -16,6 +16,7 @@ import { Stepper } from "@/components/user/stepper";
 import { formatIDR, cn } from "@/lib/utils";
 import { simulate, type Tenor } from "@/lib/financing";
 import { getApply, setApply } from "@/lib/apply-store";
+import { auth } from "@/lib/client";
 
 const tenorOptions: Tenor[] = [3, 6, 12];
 
@@ -23,6 +24,7 @@ export default function SimulatePage() {
   const router = useRouter();
   const [tenor, setTenor] = useState<Tenor>(3);
   const [product, setProduct] = useState<any | null>(null);
+  const [trustLevel, setTrustLevel] = useState<1 | 2 | 3>(1);
 
   useEffect(() => {
     const a = getApply();
@@ -32,18 +34,29 @@ export default function SimulatePage() {
     }
     setProduct(a.product);
     if (a.tenor) setTenor(a.tenor);
+    auth.me().then((res) => {
+      if (res.ok && res.data.user?.trustLevel) {
+        setTrustLevel(res.data.user.trustLevel as 1 | 2 | 3);
+        // L1 hanya tenor 3 bulan
+        if (res.data.user.trustLevel === 1) setTenor(3);
+      }
+    });
   }, [router]);
 
   if (!product) return null;
 
   const sim = simulate(product.price, tenor, {
     highRisk: product.highRisk,
+    newUser: trustLevel === 1,
+    trustLevel,
   });
 
   const onContinue = () => {
     setApply({ tenor });
     router.push("/apply/verify");
   };
+
+  const maxTenor = trustLevel === 1 ? 3 : trustLevel === 2 ? 6 : 12;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -81,17 +94,25 @@ export default function SimulatePage() {
         </div>
         <div className="grid grid-cols-3 gap-3">
           {tenorOptions.map((t) => {
-            const s = simulate(product.price, t, { highRisk: product.highRisk });
+            const s = simulate(product.price, t, {
+              highRisk: product.highRisk,
+              newUser: trustLevel === 1,
+              trustLevel,
+            });
             const active = t === tenor;
+            const disabled = t > maxTenor;
             return (
               <button
                 key={t}
-                onClick={() => setTenor(t)}
+                onClick={() => !disabled && setTenor(t)}
+                disabled={disabled}
                 className={cn(
                   "rounded-3xl p-4 text-left border-2 transition-all",
+                  disabled && "opacity-40 cursor-not-allowed",
                   active
                     ? "border-primary bg-primary-50/60 shadow-ring"
-                    : "border-border bg-white hover:border-primary-200"
+                    : !disabled && "border-border bg-white hover:border-primary-200",
+                  !active && !disabled && "border-border bg-white hover:border-primary-200"
                 )}
               >
                 <p
@@ -106,7 +127,11 @@ export default function SimulatePage() {
                   {formatIDR(s.monthly).replace("Rp", "Rp ")}
                 </p>
                 <p className="text-xs text-ink-muted mt-1">/bulan</p>
-                {active ? (
+                {disabled ? (
+                  <p className="text-[11px] text-ink-muted mt-2">
+                    Butuh Trust L{t === 6 ? "2" : "3"}
+                  </p>
+                ) : active ? (
                   <span className="mt-3 inline-flex items-center gap-1 text-xs text-primary font-semibold">
                     <Check className="h-3.5 w-3.5" /> Dipilih
                   </span>

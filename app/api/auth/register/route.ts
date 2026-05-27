@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { fail, ok, parseJson } from "@/lib/api";
 import { userId, newOtp, newId } from "@/lib/ids";
 import { audit, notify } from "@/lib/services";
+import { bindDevice } from "@/lib/device";
 import { createSession, SESSION_COOKIE } from "@/lib/auth";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
   });
 
   await audit(id, "user.register", "users", id, { email, phone });
+  await bindDevice(id, req);
 
   // Issue session immediately (post-OTP would also be fine).
   const token = await createSession({

@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { fail, ok, parseJson } from "@/lib/api";
 import { createSession, SESSION_COOKIE } from "@/lib/auth";
 import { audit } from "@/lib/services";
+import { bindDevice } from "@/lib/device";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
   });
 
   await audit(user.id, "user.login.password", "users", user.id);
+  await bindDevice(user.id, req);
 
   return ok({
     user: {

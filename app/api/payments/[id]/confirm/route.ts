@@ -59,7 +59,7 @@ export const POST = await requireAuth(["customer", "super_admin", "finance_admin
           .update(schema.applications)
           .set({ status: "completed" })
           .where(eq(schema.applications.id, p.applicationId));
-        // Trust level upgrade
+        // Trust level upgrade per PRD §8
         const user = (
           await db
             .select()
@@ -68,19 +68,24 @@ export const POST = await requireAuth(["customer", "super_admin", "finance_admin
             .limit(1)
         )[0];
         if (user) {
-          const newLvl = Math.min(3, user.trustLevel + 1);
+          const newLvl = Math.min(3, user.trustLevel + 1) as 1 | 2 | 3;
+          const { getLimitForTrustLevel } = await import("@/lib/financing");
           await db
             .update(schema.users)
             .set({
               trustLevel: newLvl,
-              limit:
-                newLvl === 3
-                  ? 25_000_000
-                  : newLvl === 2
-                    ? 10_000_000
-                    : 5_000_000,
+              limit: getLimitForTrustLevel(newLvl),
             })
             .where(eq(schema.users.id, p.userId));
+          if (newLvl > user.trustLevel) {
+            await notify({
+              userId: user.id,
+              type: "system",
+              tone: "success",
+              title: `Naik ke Trust Level ${newLvl} 🎉`,
+              body: `Limit baru ${getLimitForTrustLevel(newLvl).toLocaleString("id-ID")}`,
+            });
+          }
         }
       }
     }

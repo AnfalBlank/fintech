@@ -9,9 +9,18 @@ import {
   requireAuth,
 } from "@/lib/api";
 import { applicationId, newId } from "@/lib/ids";
-import { simulate, computeRisk, isHighRisk } from "@/lib/financing";
+import {
+  simulate,
+  computeRisk,
+  isHighRisk,
+  getLimitForTrustLevel,
+  getMaxTenorForTrustLevel,
+  isAffordable,
+  type TrustLevel,
+} from "@/lib/financing";
 import { scrapeProduct } from "@/lib/scrape";
 import { audit, notify } from "@/lib/services";
+import { formatIDR } from "@/lib/utils";
 import type { NextRequest } from "next/server";
 import { isAdmin } from "@/lib/auth";
 
@@ -75,17 +84,38 @@ export const POST = await requireAuth(["customer"] as const)(async (
     Object.assign(user, userPatch);
   }
 
-  // Trust level based limits (PRD §8)
-  const limit =
-    user.trustLevel === 3 ? 25_000_000 : user.trustLevel === 2 ? 10_000_000 : 5_000_000;
+  // Trust level based limits & tenor caps (PRD §8 + §25)
+  const trustLevel = (user.trustLevel as TrustLevel) ?? 1;
+  const limit = getLimitForTrustLevel(trustLevel);
   if (product.price > limit) {
-    return fail(`Limit Anda Rp ${limit.toLocaleString("id-ID")}`, 400);
+    return fail(
+      `Limit Anda ${formatIDR(limit)} (Trust Level ${trustLevel}). Lunasi cicilan tepat waktu untuk naik level.`,
+      400
+    );
+  }
+
+  const maxTenor = getMaxTenorForTrustLevel(trustLevel);
+  if (data.tenor > maxTenor) {
+    return fail(
+      `Trust Level ${trustLevel} hanya boleh tenor maks ${maxTenor} bulan.`,
+      400
+    );
   }
 
   const sim = simulate(product.price, data.tenor, {
-    newUser: user.trustLevel === 1,
+    newUser: trustLevel === 1,
     highRisk: product.highRisk,
+    trustLevel,
   });
+
+  // PRD §25: Maximum installment 35% dari penghasilan bulanan.
+  const incomeForCheck = user.income ?? data.income ?? null;
+  if (incomeForCheck && !isAffordable(sim.monthly, incomeForCheck)) {
+    return fail(
+      `Cicilan ${formatIDR(sim.monthly)}/bln melebihi 35% penghasilan Anda. Pilih tenor lebih panjang atau produk lebih murah.`,
+      400
+    );
+  }
 
   const risk = computeRisk({
     income: user.income ?? data.income,
@@ -113,12 +143,27 @@ export const POST = await requireAuth(["customer"] as const)(async (
   };
   await db.insert(schema.products).values(productRow);
 
-  // Determine status
-  let status: "pending" | "manual_review" | "rejected" | "approved" = "pending";
+  // PRD §11 Step 7 Approval logic:
+  //   Auto Approve: limit kecil (≤ 3jt) AND grade A
+  //   Manual Review: limit tinggi OR barang risky OR grade C
+  //   Auto Reject: grade D (fraud / fake KTP / suspicious)
+  let status:
+    | "pending"
+    | "manual_review"
+    | "rejected"
+    | "approved"
+    | "dp_pending"
+    | "purchasing" = "pending";
   if (risk.grade === "D") status = "rejected";
-  else if (risk.grade === "A" && product.price <= 3_000_000)
-    status = "approved";
-  else if (risk.grade === "C" || product.highRisk) status = "manual_review";
+  else if (risk.grade === "A" && product.price <= 3_000_000) {
+    // Auto approve → langsung ke alur DP / purchasing.
+    status = sim.dpRequired ? "dp_pending" : "purchasing";
+  } else if (
+    risk.grade === "C" ||
+    product.highRisk ||
+    product.price > 10_000_000
+  )
+    status = "manual_review";
   else status = "pending";
 
   const appId = applicationId();
@@ -152,6 +197,17 @@ export const POST = await requireAuth(["customer"] as const)(async (
     grade: risk.grade,
   });
 
+  // Auto-approve side effect: bikin asset placeholder (PRD §11 Step 9 entry).
+  if (status === "dp_pending" || status === "purchasing") {
+    const { assetId } = await import("@/lib/ids");
+    await db.insert(schema.assets).values({
+      id: assetId(),
+      applicationId: appId,
+      productTitle: productRow.title,
+      status: "to_purchase",
+    });
+  }
+
   await audit(user.id, "application.create", "applications", appId, {
     risk: risk.grade,
     status,
@@ -161,19 +217,19 @@ export const POST = await requireAuth(["customer"] as const)(async (
     userId: user.id,
     type: "approval_update",
     tone:
-      status === "approved"
+      status === "dp_pending" || status === "purchasing"
         ? "success"
         : status === "rejected"
           ? "danger"
           : "info",
     title:
-      status === "approved"
+      status === "dp_pending" || status === "purchasing"
         ? "Pengajuan auto-approved"
         : status === "rejected"
           ? "Pengajuan ditolak"
           : "Pengajuan diterima, menunggu review",
     body: `${appId} • ${product.title}`,
-    link: `/installments`,
+    link: status === "dp_pending" ? `/payments?applicationId=${appId}` : `/installments`,
   });
 
   return ok({

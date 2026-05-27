@@ -1,6 +1,7 @@
-// Financing logic per PRD §6, §7, §8, §15, §16. Shared by API and UI.
+// Financing logic per PRD §6, §7, §8, §15, §16, §25. Shared by API and UI.
 
 export type Tenor = 3 | 6 | 12;
+export type TrustLevel = 1 | 2 | 3;
 
 export type Simulation = {
   productPrice: number;
@@ -14,37 +15,65 @@ export type Simulation = {
   financed: number;
 };
 
-export function getMarginPct(tenor: Tenor): number {
-  if (tenor === 3) return 0.3;
-  if (tenor === 6) return 0.33;
-  return 0.38;
+// PRD §6: 30–35% untuk tenor 3 bulan, scaling untuk tenor lebih panjang.
+// PRD §8: Level 3 (Priority) → margin lebih rendah → diskon 3%.
+export function getMarginPct(tenor: Tenor, trustLevel: TrustLevel = 1): number {
+  let base = 0.3;
+  if (tenor === 6) base = 0.33;
+  if (tenor === 12) base = 0.38;
+  if (trustLevel === 3) base = Math.max(0.25, base - 0.03);
+  return base;
 }
 
+// PRD §8: limit per trust level.
+//   Level 1 — Rp 3 juta (juga PRD §25 Initial User Limit)
+//   Level 2 — Rp 5 juta
+//   Level 3 — Rp 25 juta (PRD §8 "limit besar")
+export function getLimitForTrustLevel(level: TrustLevel): number {
+  if (level === 3) return 25_000_000;
+  if (level === 2) return 5_000_000;
+  return 3_000_000;
+}
+
+// PRD §8 Level 1: tenor max 3 bulan untuk new user.
+export function getMaxTenorForTrustLevel(level: TrustLevel): Tenor {
+  if (level === 1) return 3;
+  if (level === 2) return 6;
+  return 12;
+}
+
+// PRD §7
+//   RULE 1 (No DP): harga ≤ 3jt + tenor ≤ 3 + bukan high risk + bukan new user
+//                   (risk score bagus dicek separately via grade A/B di approval)
+//   RULE 2 (Wajib DP): selain itu
 export function getDpRule(
   price: number,
+  tenor: Tenor,
   opts?: { newUser?: boolean; highRisk?: boolean }
 ): { required: boolean; pct: number } {
   const newUser = opts?.newUser ?? false;
   const highRisk = opts?.highRisk ?? false;
 
-  if (price <= 3_000_000 && !newUser && !highRisk) {
+  // RULE 1: tanpa DP
+  if (price <= 3_000_000 && tenor <= 3 && !newUser && !highRisk) {
     return { required: false, pct: 0 };
   }
-  let pct = 0.1;
+  // RULE 2: DP wajib, struktur sesuai PRD §7
+  let pct = 0.1; // default for ≤3jt special case (new user / high risk)
+  if (price > 3_000_000 && price <= 5_000_000) pct = 0.1;
   if (price > 5_000_000 && price <= 10_000_000) pct = 0.2;
   if (price > 10_000_000) pct = 0.3;
-  if (price <= 3_000_000) pct = 0.1;
   return { required: true, pct };
 }
 
 export function simulate(
   price: number,
   tenor: Tenor,
-  opts?: { newUser?: boolean; highRisk?: boolean }
+  opts?: { newUser?: boolean; highRisk?: boolean; trustLevel?: TrustLevel }
 ): Simulation {
-  const marginPct = getMarginPct(tenor);
+  const marginPct = getMarginPct(tenor, opts?.trustLevel ?? 1);
   const total = Math.round(price * (1 + marginPct));
-  const dp = getDpRule(price, opts);
+  const dp = getDpRule(price, tenor, opts);
   const dpAmount = dp.required ? Math.round(price * dp.pct) : 0;
   const financed = Math.max(0, total - dpAmount);
   const monthly = Math.round(financed / tenor);
@@ -72,19 +101,28 @@ export type RiskInputs = {
   deviceTrust?: number; // 0-100
 };
 
+// PRD §9 SAFE category
 const SAFE_CATEGORIES = [
+  // Elektronik produktif
   "smartphone",
   "laptop",
   "tablet",
   "printer",
+  // Home appliance
   "ac",
   "kulkas",
   "mesin cuci",
+  // Peralatan usaha
   "freezer",
   "mesin kopi",
+  "mesin usaha",
   "alat kasir",
+  // Common umbrella label from scraper
+  "home appliance",
+  "peralatan usaha",
 ];
 
+// PRD §10 HIGH RISK
 const HIGH_RISK_CATEGORIES = [
   "luxury fashion",
   "sneakers hype",
@@ -111,6 +149,7 @@ export type RiskBreakdown = {
   grade: "A" | "B" | "C" | "D";
 };
 
+// PRD §25 Coverage Area MVP: Jabodetabek, Bandung, Bekasi
 const COVERAGE_CITIES = [
   "jakarta",
   "depok",
@@ -157,7 +196,7 @@ export function computeRisk(input: RiskInputs): RiskBreakdown {
 
   const deviceTrust = Math.max(0, Math.min(100, input.deviceTrust ?? 60));
 
-  // PRD weights: 25/20/20/15/10/10
+  // PRD §15 weights: 25/20/20/15/10/10
   const total = Math.round(
     income * 0.25 +
       occ * 0.2 +
@@ -167,6 +206,7 @@ export function computeRisk(input: RiskInputs): RiskBreakdown {
       deviceTrust * 0.1
   );
 
+  // PRD §16: A ≥80, B 65–79, C 50–64, D <50
   const grade =
     total >= 80 ? "A" : total >= 65 ? "B" : total >= 50 ? "C" : "D";
 
@@ -182,8 +222,14 @@ export function computeRisk(input: RiskInputs): RiskBreakdown {
   };
 }
 
-// PRD §25: max installment = 35% of monthly income
-export function maxAffordableMonthly(income?: number): number {
-  if (!income) return Number.MAX_SAFE_INTEGER;
+// PRD §25: maximum cicilan = 35% dari penghasilan bulanan
+export function maxAffordableMonthly(income?: number | null): number | null {
+  if (!income || income <= 0) return null;
   return Math.floor(income * 0.35);
+}
+
+export function isAffordable(monthly: number, income?: number | null): boolean {
+  const max = maxAffordableMonthly(income);
+  if (max == null) return true; // unknown income, skip check
+  return monthly <= max;
 }

@@ -111,7 +111,7 @@ async function main() {
       phone: "+628129931221",
       role: "customer" as const,
       trustLevel: 2,
-      limit: 10_000_000,
+      limit: 5_000_000,
       income: 12_000_000,
       occupation: "Karyawan Tetap",
       city: "Jakarta Selatan",
@@ -124,7 +124,7 @@ async function main() {
       phone: "+628132204192",
       role: "customer" as const,
       trustLevel: 1,
-      limit: 5_000_000,
+      limit: 3_000_000,
       income: 6_500_000,
       occupation: "Reseller Online",
       city: "Bekasi",
@@ -137,7 +137,7 @@ async function main() {
       phone: "+628211100987",
       role: "customer" as const,
       trustLevel: 1,
-      limit: 5_000_000,
+      limit: 3_000_000,
       income: 4_500_000,
       occupation: "UMKM",
       city: "Bandung",
@@ -256,6 +256,7 @@ async function main() {
     const sim = simulate(p.price, p.tenor, {
       newUser: p.customer.trustLevel === 1,
       highRisk: p.highRisk,
+      trustLevel: p.customer.trustLevel as 1 | 2 | 3,
     });
     const risk = computeRisk({
       income: p.customer.income,

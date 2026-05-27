@@ -33,6 +33,17 @@ export function detectMarketplace(
 // Catalog of mock products keyed by hash of URL.
 const CATALOG: Omit<ScrapedProduct, "url" | "marketplace">[] = [
   {
+    title: "Printer Epson L3210 All-in-One",
+    imageUrl:
+      "https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?q=80&w=600&auto=format",
+    price: 2_499_000,
+    category: "Printer",
+    storeName: "Epson Indonesia",
+    storeRating: 4.9,
+    resaleScore: 75,
+    highRisk: false,
+  },
+  {
     title: "iPhone 15 Pro 256GB Natural Titanium",
     imageUrl:
       "https://images.unsplash.com/photo-1592286927505-1def25115558?q=80&w=600&auto=format",
