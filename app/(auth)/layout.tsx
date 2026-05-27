@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "@/components/ui/logo";
 
 export default function AuthLayout({
   children,
@@ -19,9 +20,7 @@ export default function AuthLayout({
         />
         <div className="relative">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="h-10 w-10 rounded-2xl bg-white grid place-items-center text-primary font-bold">
-              M
-            </div>
+            <Logo size="lg" />
             <span className="font-bold text-lg">Manggala</span>
           </Link>
         </div>

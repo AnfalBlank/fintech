@@ -18,6 +18,7 @@ import { NotificationsPopover } from "@/components/ui/notifications";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { auth } from "@/lib/client";
+import { Logo } from "@/components/ui/logo";
 
 const navItems = [
   { href: "/dashboard", label: "Beranda", Icon: Home },
@@ -59,9 +60,7 @@ export function UserAppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 glass">
         <div className="container flex items-center gap-3 h-16">
           <Link href="/dashboard" className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-2xl bg-primary grid place-items-center text-white font-bold">
-              M
-            </div>
+            <Logo size="md" />
             <span className="font-bold hidden sm:inline">Manggala</span>
           </Link>
           <div className="flex-1 flex items-center justify-end gap-2">

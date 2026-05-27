@@ -5,6 +5,7 @@ import { Home, History, LogOut, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { auth } from "@/lib/client";
+import { Logo } from "@/components/ui/logo";
 
 const nav = [
   { href: "/courier", label: "Tugas", Icon: Home },
@@ -28,9 +29,7 @@ export function CourierShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 glass">
         <div className="flex items-center justify-between h-14 px-4">
           <Link href="/courier" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-xl bg-primary grid place-items-center text-white font-bold text-sm">
-              M
-            </div>
+            <Logo size="sm" />
             <div className="leading-tight">
               <p className="font-bold text-sm">Manggala Courier</p>
               <p className="text-[10px] text-ink-muted -mt-0.5">v1.0</p>

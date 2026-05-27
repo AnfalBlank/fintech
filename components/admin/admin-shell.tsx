@@ -23,6 +23,7 @@ import { NotificationsPopover } from "@/components/ui/notifications";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { auth } from "@/lib/client";
+import { Logo } from "@/components/ui/logo";
 
 const nav = [
   { href: "/admin", label: "Overview", Icon: LayoutDashboard, exact: true },
@@ -72,9 +73,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="w-64 shrink-0 hidden lg:flex flex-col bg-navy text-white sticky top-0 h-screen">
         <div className="px-5 py-5 flex items-center gap-2.5">
-          <div className="h-9 w-9 rounded-2xl bg-white grid place-items-center text-primary font-bold">
-            M
-          </div>
+          <Logo size="md" />
           <div className="leading-tight">
             <p className="font-bold">Manggala</p>
             <p className="text-[10px] text-white/50">Admin Console</p>

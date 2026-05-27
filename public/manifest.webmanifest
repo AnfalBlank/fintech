@@ -1,0 +1,23 @@
+{
+  "name": "Manggala — Verified Financing Platform",
+  "short_name": "Manggala",
+  "description": "Platform talangan pembelian cicilan PT. Manggala Utama Indonesia.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/logofintech.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logofintech.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

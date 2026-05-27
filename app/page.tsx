@@ -11,6 +11,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/ui/logo";
 import { formatIDR } from "@/lib/utils";
 
 export default function LandingPage() {
@@ -20,9 +21,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 glass">
         <div className="container flex items-center justify-between h-16">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-2xl bg-primary grid place-items-center text-white font-bold">
-              M
-            </div>
+            <Logo size="md" />
             <div className="leading-tight">
               <p className="font-bold text-ink">Manggala</p>
               <p className="text-[10px] text-ink-muted -mt-0.5">
