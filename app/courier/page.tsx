@@ -33,6 +33,28 @@ export default function CourierHomePage() {
     );
   }
 
+  if (items.length === 0) {
+    return (
+      <div className="space-y-4">
+        <Card className="bg-gradient-to-br from-primary-700 via-primary to-sky text-white p-5 shadow-float">
+          <p className="text-xs opacity-90">
+            Halo, {user?.name?.split(" ")[0] ?? "Kurir"}
+          </p>
+          <p className="text-2xl font-bold mt-1">Belum ada tugas</p>
+          <p className="text-sm opacity-80 mt-1">
+            Anda akan menerima notifikasi saat ada pengiriman baru.
+          </p>
+        </Card>
+        <Card>
+          <p className="text-sm text-ink-muted text-center py-4">
+            Tarik ulang halaman ini secara berkala atau pastikan notifikasi
+            aktif.
+          </p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <Card className="bg-gradient-to-br from-primary-700 via-primary to-sky text-white p-5 shadow-float">

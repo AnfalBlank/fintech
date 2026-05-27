@@ -226,7 +226,7 @@ check "List team users" "$RES"
 
 RES=$(curl -s -b /tmp/manggala-admin.cookie -X POST "$BASE/api/admin/users" \
   -H "content-type: application/json" \
-  -d '{"name":"E2E Test","email":"e2etest@manggala.id","phone":"+628111999000","password":"password123","role":"surveyor"}')
+  -d "{\"name\":\"E2E Test\",\"email\":\"e2etest-$$@manggala.id\",\"phone\":\"+62811199${RANDOM}\",\"password\":\"password123\",\"role\":\"surveyor\"}")
 check "Create user" "$RES"
 NEW_USER_ID=$(echo "$RES" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null || echo "")
 

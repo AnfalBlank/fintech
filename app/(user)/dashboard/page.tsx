@@ -104,53 +104,77 @@ export default function DashboardPage() {
           aria-hidden
           className="absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-2xl"
         />
-        <div className="flex items-center justify-between">
-          <p className="text-sm opacity-90">Total Sisa Cicilan Aktif</p>
-          <span className="chip bg-white/15 text-white">
-            {apps.filter((a) => a.status === "active").length} cicilan
-          </span>
-        </div>
-        <p className="mt-2 text-[40px] font-bold tracking-tight">
-          {formatIDR(totalActive)}
-        </p>
-
-        {active ? (
+        {apps.length === 0 ? (
           <>
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl bg-white/10 p-4">
-                <div className="flex items-center gap-2 text-sm opacity-90">
-                  <CalendarClock className="h-4 w-4" /> Jatuh Tempo
-                </div>
-                <p className="mt-1 font-semibold">
-                  {active.nextDue ? formatDate(new Date(active.nextDue)) : "—"}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-white/10 p-4">
-                <div className="flex items-center gap-2 text-sm opacity-90">
-                  <CreditCard className="h-4 w-4" /> Nominal
-                </div>
-                <p className="mt-1 font-semibold">{formatIDR(active.monthly)}</p>
-              </div>
-            </div>
+            <p className="text-sm opacity-90">Mulai pengajuan pertama Anda</p>
+            <p className="mt-2 text-[28px] font-bold tracking-tight leading-tight">
+              Beli sekarang, <br />
+              cicil dengan tenang
+            </p>
+            <p className="mt-2 text-sm opacity-80">
+              Limit Anda saat ini {formatIDR(user?.limit ?? 3_000_000)}.
+            </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href={`/payments?applicationId=${active.app.id}`}
-              >
+              <Link href="/apply">
                 <Button variant="secondary">
-                  Bayar Sekarang <ArrowRight className="h-4 w-4" />
+                  Mulai Pengajuan <ArrowRight className="h-4 w-4" />
                 </Button>
-              </Link>
-              <Link href={`/installments/${active.app.id}`}>
-                <button className="inline-flex items-center gap-1.5 text-sm font-semibold text-white/90 hover:text-white">
-                  Lihat detail <ArrowUpRight className="h-4 w-4" />
-                </button>
               </Link>
             </div>
           </>
         ) : (
-          <p className="mt-4 text-sm opacity-90">
-            Belum ada cicilan aktif. Mulai pengajuan pertama Anda.
-          </p>
+          <>
+            <div className="flex items-center justify-between">
+              <p className="text-sm opacity-90">Total Sisa Cicilan Aktif</p>
+              <span className="chip bg-white/15 text-white">
+                {apps.filter((a) => a.status === "active").length} cicilan
+              </span>
+            </div>
+            <p className="mt-2 text-[40px] font-bold tracking-tight">
+              {formatIDR(totalActive)}
+            </p>
+
+            {active ? (
+              <>
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-white/10 p-4">
+                    <div className="flex items-center gap-2 text-sm opacity-90">
+                      <CalendarClock className="h-4 w-4" /> Jatuh Tempo
+                    </div>
+                    <p className="mt-1 font-semibold">
+                      {active.nextDue
+                        ? formatDate(new Date(active.nextDue))
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white/10 p-4">
+                    <div className="flex items-center gap-2 text-sm opacity-90">
+                      <CreditCard className="h-4 w-4" /> Nominal
+                    </div>
+                    <p className="mt-1 font-semibold">
+                      {formatIDR(active.monthly)}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link href={`/payments?applicationId=${active.app.id}`}>
+                    <Button variant="secondary">
+                      Bayar Sekarang <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                  <Link href={`/installments/${active.app.id}`}>
+                    <button className="inline-flex items-center gap-1.5 text-sm font-semibold text-white/90 hover:text-white">
+                      Lihat detail <ArrowUpRight className="h-4 w-4" />
+                    </button>
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <p className="mt-4 text-sm opacity-90">
+                Semua cicilan sudah lunas 🎉
+              </p>
+            )}
+          </>
         )}
       </div>
 

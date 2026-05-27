@@ -14,9 +14,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { Empty } from "@/components/ui/empty";
 import { useToast } from "@/components/ui/toast";
 import { customer } from "@/lib/client";
 import { formatIDR, cn } from "@/lib/utils";
+import Link from "next/link";
 
 type Method = "va" | "qris" | "ewallet";
 
@@ -49,6 +51,7 @@ function PaymentsInner() {
   const [submitting, setSubmitting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [intent, setIntent] = useState<any | null>(null);
+  const [resolving, setResolving] = useState(true);
   const [target, setTarget] = useState<{
     appId?: string;
     type: "dp" | "installment";
@@ -60,60 +63,64 @@ function PaymentsInner() {
   // Determine the payment target on mount
   useEffect(() => {
     (async () => {
-      if (applicationId) {
-        const res = await customer.application(applicationId);
-        if (!res.ok) return toast.danger("Gagal memuat", res.error);
-        const app = res.data.application;
-        if (installmentId) {
-          const ins = res.data.installments.find(
-            (i: any) => i.id === installmentId
-          );
-          if (ins) {
+      try {
+        if (applicationId) {
+          const res = await customer.application(applicationId);
+          if (!res.ok) return toast.danger("Gagal memuat", res.error);
+          const app = res.data.application;
+          if (installmentId) {
+            const ins = res.data.installments.find(
+              (i: any) => i.id === installmentId
+            );
+            if (ins) {
+              setTarget({
+                appId: applicationId,
+                type: "installment",
+                amount: ins.amount + (ins.penaltyAmount ?? 0),
+                insId: ins.id,
+                title: `Cicilan ke-${ins.sequence}`,
+              });
+            }
+          } else if (app.dpRequired && app.status === "dp_pending") {
             setTarget({
               appId: applicationId,
-              type: "installment",
-              amount: ins.amount + (ins.penaltyAmount ?? 0),
-              insId: ins.id,
-              title: `Cicilan ke-${ins.sequence}`,
+              type: "dp",
+              amount: app.dpAmount,
+              title: "Down Payment",
             });
+          } else {
+            // Latest unpaid installment
+            const ins = res.data.installments.find(
+              (i: any) => i.status !== "paid"
+            );
+            if (ins)
+              setTarget({
+                appId: applicationId,
+                type: "installment",
+                amount: ins.amount + (ins.penaltyAmount ?? 0),
+                insId: ins.id,
+                title: `Cicilan ke-${ins.sequence}`,
+              });
           }
-        } else if (app.dpRequired && app.status === "dp_pending") {
-          setTarget({
-            appId: applicationId,
-            type: "dp",
-            amount: app.dpAmount,
-            title: "Down Payment",
-          });
         } else {
-          // Latest unpaid installment
-          const ins = res.data.installments.find(
-            (i: any) => i.status !== "paid"
-          );
-          if (ins)
-            setTarget({
-              appId: applicationId,
-              type: "installment",
-              amount: ins.amount + (ins.penaltyAmount ?? 0),
-              insId: ins.id,
-              title: `Cicilan ke-${ins.sequence}`,
-            });
-        }
-      } else {
-        // Pick first overdue/due across all installments
-        const res = await customer.installments();
-        if (res.ok) {
-          const items = res.data.items;
-          const due = items.find((i: any) => i.ins.status !== "paid");
-          if (due) {
-            setTarget({
-              appId: due.app.id,
-              type: "installment",
-              amount: due.ins.amount + (due.ins.penaltyAmount ?? 0),
-              insId: due.ins.id,
-              title: `${due.product?.title ?? "Cicilan"} #${due.ins.sequence}`,
-            });
+          // Pick first overdue/due across all installments
+          const res = await customer.installments();
+          if (res.ok) {
+            const items = res.data.items;
+            const due = items.find((i: any) => i.ins.status !== "paid");
+            if (due) {
+              setTarget({
+                appId: due.app.id,
+                type: "installment",
+                amount: due.ins.amount + (due.ins.penaltyAmount ?? 0),
+                insId: due.ins.id,
+                title: `${due.product?.title ?? "Cicilan"} #${due.ins.sequence}`,
+              });
+            }
           }
         }
+      } finally {
+        setResolving(false);
       }
     })();
   }, [applicationId, installmentId, toast]);
@@ -128,13 +135,29 @@ function PaymentsInner() {
   const minutes = Math.floor((timeLeft % 3600) / 60);
   const seconds = timeLeft % 60;
 
+  if (resolving) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="skeleton h-32" />
+        <div className="skeleton h-40" />
+      </div>
+    );
+  }
+
   if (!target) {
     return (
       <div className="max-w-2xl mx-auto">
         <Card>
-          <p className="text-center text-ink-muted">
-            Tidak ada pembayaran tertunda
-          </p>
+          <Empty
+            Icon={CreditCard}
+            title="Tidak ada pembayaran tertunda"
+            description="Semua cicilan Anda sudah lunas atau belum waktunya bayar."
+            action={
+              <Link href="/installments">
+                <Button variant="secondary">Lihat Cicilan</Button>
+              </Link>
+            }
+          />
         </Card>
       </div>
     );

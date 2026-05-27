@@ -15,6 +15,16 @@ async function call<T>(
       credentials: "same-origin",
       cache: "no-store",
     });
+    if (
+      res.status === 401 &&
+      typeof window !== "undefined" &&
+      !path.startsWith("/api/auth/")
+    ) {
+      // Session expired — bounce to login preserving intended path.
+      const next = window.location.pathname + window.location.search;
+      window.location.href = `/login?next=${encodeURIComponent(next)}`;
+      return { ok: false, error: "Unauthorized" };
+    }
     const json = await res.json().catch(() => ({}));
     if (!res.ok || json.ok === false) {
       return { ok: false, error: json?.error ?? `HTTP ${res.status}` };

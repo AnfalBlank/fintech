@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { ArrowRight, Lock, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -12,7 +12,17 @@ import { cn } from "@/lib/utils";
 type Tab = "otp" | "password";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+function LoginInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next");
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("otp");
   const [phone, setPhone] = useState("");
@@ -55,6 +65,7 @@ export default function LoginPage() {
   };
 
   const redirectByRole = (role: string) => {
+    if (next) return router.push(next);
     if (role === "courier") return router.push("/courier");
     if (
       [
