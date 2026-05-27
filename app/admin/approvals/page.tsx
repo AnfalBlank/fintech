@@ -204,9 +204,17 @@ export default function ApprovalsPage() {
                     className="h-20 w-20 rounded-2xl object-cover bg-slate-100"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="font-mono text-xs text-ink-muted">
-                      {selected.app.id}
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <p className="font-mono text-xs text-ink-muted">
+                        {selected.app.id}
+                      </p>
+                      <a
+                        href={`/admin/applications/${selected.app.id}`}
+                        className="text-xs text-primary font-semibold hover:underline"
+                      >
+                        Buka detail page →
+                      </a>
+                    </div>
                     <p className="text-cardtitle font-bold text-ink">
                       {selected.product?.title}
                     </p>

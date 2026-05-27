@@ -17,6 +17,11 @@ import {
   LogOut,
   Settings,
   User,
+  Banknote,
+  History,
+  Megaphone,
+  RotateCcw,
+  FileBarChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NotificationsPopover } from "@/components/ui/notifications";
@@ -28,13 +33,20 @@ import { Logo } from "@/components/ui/logo";
 const nav = [
   { href: "/admin", label: "Overview", Icon: LayoutDashboard, exact: true },
   { href: "/admin/approvals", label: "Approval", Icon: ClipboardCheck },
+  { href: "/admin/disbursement", label: "Disbursement", Icon: Banknote },
   { href: "/admin/finance", label: "Finance", Icon: LineChart },
   { href: "/admin/warehouse", label: "Warehouse / QC", Icon: Warehouse },
   { href: "/admin/delivery", label: "Delivery", Icon: Truck },
   { href: "/admin/collection", label: "Collection", Icon: Wallet },
+  { href: "/admin/customers", label: "Customers", Icon: Users },
+  { href: "/admin/refunds", label: "Refunds", Icon: RotateCcw },
+  { href: "/admin/broadcasts", label: "Broadcasts", Icon: Megaphone },
+  { href: "/admin/reports", label: "Reports", Icon: FileBarChart },
   { href: "/admin/fraud", label: "Fraud", Icon: ShieldAlert },
   { href: "/admin/assets", label: "Assets", Icon: Boxes },
-  { href: "/admin/users", label: "Users & Roles", Icon: Users },
+  { href: "/admin/audit", label: "Audit Log", Icon: History },
+  { href: "/admin/users", label: "Team & Roles", Icon: User },
+  { href: "/admin/settings", label: "Settings", Icon: Settings },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

@@ -457,3 +457,51 @@ export const auditLogs = sqliteTable(
     actorIdx: index("audit_actor_idx").on(t.actorId),
   })
 );
+
+// ============== APP SETTINGS (single-row config table) ==============
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(), // JSON-encoded
+  updatedBy: text("updated_by").references(() => users.id),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// ============== REFUNDS ==============
+export const refunds = sqliteTable("refunds", {
+  id: text("id").primaryKey(),
+  applicationId: text("application_id")
+    .notNull()
+    .references(() => applications.id),
+  paymentId: text("payment_id").references(() => payments.id),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  amount: integer("amount").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status", {
+    enum: ["pending", "processed", "rejected"],
+  })
+    .notNull()
+    .default("pending"),
+  processedBy: text("processed_by").references(() => users.id),
+  processedAt: integer("processed_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// ============== BROADCASTS ==============
+export const broadcasts = sqliteTable("broadcasts", {
+  id: text("id").primaryKey(),
+  channel: text("channel", { enum: ["wa", "email", "push"] }).notNull(),
+  segment: text("segment").notNull(), // 'all' | 'trust_1' | 'overdue' | 'active' | 'inactive'
+  subject: text("subject"),
+  message: text("message").notNull(),
+  recipientCount: integer("recipient_count").notNull().default(0),
+  sentBy: text("sent_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

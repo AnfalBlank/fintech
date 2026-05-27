@@ -95,8 +95,71 @@ export const admin = {
     api.get<{ items: any[] }>(
       `/api/applications${status ? `?status=${status}` : ""}`
     ),
+  application: (id: string) => api.get<any>(`/api/applications/${id}`),
   decide: (id: string, action: "approve" | "reject" | "hold", reason?: string) =>
     api.post<any>(`/api/applications/${id}/decide`, { action, reason }),
+  customers: (q?: string, status?: string, trust?: string) => {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (status) p.set("status", status);
+    if (trust) p.set("trust", trust);
+    const qs = p.toString();
+    return api.get<{ items: any[] }>(
+      `/api/admin/customers${qs ? `?${qs}` : ""}`
+    );
+  },
+  customer: (id: string) => api.get<any>(`/api/admin/customers/${id}`),
+  patchCustomer: (
+    id: string,
+    body: { trustLevel?: 1 | 2 | 3; limit?: number; status?: string; reason?: string }
+  ) => api.patch<any>(`/api/admin/customers/${id}`, body),
+  audit: (q?: string, action?: string) => {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (action) p.set("action", action);
+    const qs = p.toString();
+    return api.get<{ items: any[] }>(
+      `/api/admin/audit${qs ? `?${qs}` : ""}`
+    );
+  },
+  disbursement: () => api.get<any>("/api/admin/disbursement"),
+  markDisbursed: (applicationIds: string[], invoiceNo?: string) =>
+    api.post<any>("/api/admin/disbursement", { applicationIds, invoiceNo }),
+  refunds: () => api.get<{ items: any[] }>("/api/admin/refunds"),
+  createRefund: (body: {
+    applicationId: string;
+    paymentId?: string;
+    amount: number;
+    reason: string;
+  }) => api.post<any>("/api/admin/refunds", body),
+  resolveRefund: (refundId: string, action: "process" | "reject", note?: string) =>
+    api.patch<any>("/api/admin/refunds", { refundId, action, note }),
+  broadcasts: () => api.get<{ items: any[] }>("/api/admin/broadcasts"),
+  sendBroadcast: (body: {
+    channel: "wa" | "email" | "push";
+    segment: string;
+    subject?: string;
+    message: string;
+  }) => api.post<any>("/api/admin/broadcasts", body),
+  reportSummary: (from?: string, to?: string) => {
+    const p = new URLSearchParams({ type: "summary" });
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    return api.get<any>(`/api/admin/reports?${p.toString()}`);
+  },
+  reportRows: (
+    type: "applications" | "payments" | "deliveries",
+    from?: string,
+    to?: string
+  ) => {
+    const p = new URLSearchParams({ type });
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    return api.get<any>(`/api/admin/reports?${p.toString()}`);
+  },
+  settings: () => api.get<any>("/api/admin/settings"),
+  saveSettings: (patch: Record<string, any>) =>
+    api.patch<any>("/api/admin/settings", patch),
   warehousePO: () => api.get<{ items: any[] }>("/api/admin/warehouse/po"),
   recordPurchase: (assetId: string, invoiceNo: string) =>
     api.post<any>("/api/admin/warehouse/po", { assetId, invoiceNo }),
