@@ -1,12 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CheckCircle2,
   Plus,
   Shield,
   ShieldOff,
   UserPlus,
-  X,
 } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,71 +13,87 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import {
-  roleUsers as initial,
-  rolePermissions,
-  type RoleUser,
-} from "@/lib/mock-data-extra";
+import { admin } from "@/lib/client";
 import { formatDate, cn } from "@/lib/utils";
 
-const roles: RoleUser["role"][] = [
-  "Super Admin",
-  "Finance Admin",
-  "Collection Team",
-  "Delivery Team",
-  "Surveyor",
-];
+const roles = [
+  "super_admin",
+  "finance_admin",
+  "collection_team",
+  "delivery_team",
+  "surveyor",
+  "courier",
+] as const;
+
+const PERM_DESC: Record<string, string> = {
+  super_admin: "Full access",
+  finance_admin: "Approval, finance, warehouse",
+  collection_team: "Collection",
+  delivery_team: "Delivery, warehouse",
+  surveyor: "Field validation, fraud review",
+  courier: "Mobile delivery app",
+};
 
 export default function UsersPage() {
   const toast = useToast();
-  const [users, setUsers] = useState<RoleUser[]>(initial);
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
-  const [target, setTarget] = useState<RoleUser | null>(null);
-
+  const [target, setTarget] = useState<any | null>(null);
   const [form, setForm] = useState({
     name: "",
     email: "",
-    role: "Collection Team" as RoleUser["role"],
+    phone: "",
+    password: "password123",
+    role: "collection_team" as (typeof roles)[number],
   });
 
-  const addUser = () => {
-    if (!form.name || !form.email) return;
-    const newUser: RoleUser = {
-      id: `U-${String(users.length + 1).padStart(3, "0")}`,
-      name: form.name,
-      email: form.email,
-      role: form.role,
-      status: "active",
-      lastLogin: new Date().toISOString(),
-    };
-    setUsers((s) => [newUser, ...s]);
+  const refresh = async () => {
+    setLoading(true);
+    const res = await admin.users();
+    setLoading(false);
+    if (res.ok) setItems(res.data.items);
+    else toast.danger("Gagal memuat", res.error);
+  };
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const addUser = async () => {
+    const res = await admin.createUser(form);
+    if (!res.ok) return toast.danger("Gagal", res.error);
     toast.success("User dibuat", `${form.name} sebagai ${form.role}`);
     setAddOpen(false);
-    setForm({ name: "", email: "", role: "Collection Team" });
+    setForm({
+      name: "",
+      email: "",
+      phone: "",
+      password: "password123",
+      role: "collection_team",
+    });
+    refresh();
   };
 
-  const toggleStatus = (id: string) => {
-    setUsers((s) =>
-      s.map((u) =>
-        u.id === id
-          ? { ...u, status: u.status === "active" ? "suspended" : "active" }
-          : u
-      )
-    );
-    const u = users.find((x) => x.id === id);
+  const toggleStatus = async (u: any) => {
+    const res = await admin.updateUser({
+      userId: u.id,
+      status: u.status === "active" ? "suspended" : "active",
+    });
+    if (!res.ok) return toast.danger("Gagal", res.error);
     toast.info(
-      u?.status === "active" ? "User di-suspend" : "User diaktifkan",
-      u?.name
+      u.status === "active" ? "User di-suspend" : "User diaktifkan",
+      u.name
     );
+    refresh();
   };
 
-  const updateRole = (role: RoleUser["role"]) => {
+  const updateRole = async (role: (typeof roles)[number]) => {
     if (!target) return;
-    setUsers((s) =>
-      s.map((u) => (u.id === target.id ? { ...u, role } : u))
-    );
-    toast.success("Role diperbarui", `${target.name} → ${role}`);
+    const res = await admin.updateUser({ userId: target.id, role });
+    if (!res.ok) return toast.danger("Gagal", res.error);
+    toast.success("Role diperbarui");
     setTarget(null);
+    refresh();
   };
 
   return (
@@ -87,7 +102,7 @@ export default function UsersPage() {
         <div>
           <h1 className="text-page font-bold text-ink">Users & Roles</h1>
           <p className="text-ink-muted mt-1">
-            Kelola admin, finance, collection, delivery & surveyor team.
+            Kelola admin, finance, collection, delivery, surveyor & courier.
           </p>
         </div>
         <Button onClick={() => setAddOpen(true)}>
@@ -95,21 +110,20 @@ export default function UsersPage() {
         </Button>
       </div>
 
-      {/* Role legend */}
-      <div className="grid lg:grid-cols-5 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {roles.map((r) => (
           <Card key={r} className="p-5">
             <div className="flex items-center gap-2 mb-2">
               <div className="h-9 w-9 rounded-2xl bg-primary-50 text-primary grid place-items-center">
                 <Shield className="h-4 w-4" />
               </div>
-              <p className="font-semibold text-ink text-sm">{r}</p>
+              <p className="font-semibold text-ink text-sm">
+                {r.replace("_", " ").toUpperCase()}
+              </p>
             </div>
-            <p className="text-xs text-ink-muted">
-              Akses: {rolePermissions[r].join(", ")}
-            </p>
+            <p className="text-xs text-ink-muted">{PERM_DESC[r]}</p>
             <p className="text-xs text-ink mt-2 font-semibold">
-              {users.filter((u) => u.role === r).length} user aktif
+              {items.filter((u) => u.role === r).length} user
             </p>
           </Card>
         ))}
@@ -119,6 +133,7 @@ export default function UsersPage() {
         <div className="p-6">
           <CardTitle>Team Members</CardTitle>
         </div>
+        {loading ? <div className="skeleton h-40 m-6" /> : null}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-ink-muted">
@@ -131,7 +146,14 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {users.map((u) => (
+              {items.length === 0 && !loading ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-ink-muted">
+                    Belum ada team member
+                  </td>
+                </tr>
+              ) : null}
+              {items.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50">
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
@@ -152,8 +174,10 @@ export default function UsersPage() {
                       {u.status}
                     </Badge>
                   </td>
-                  <td className="px-6 py-3 text-ink-muted">
-                    {formatDate(u.lastLogin)}
+                  <td className="px-6 py-3 text-ink-muted text-xs">
+                    {u.lastLoginAt
+                      ? formatDate(new Date(u.lastLoginAt))
+                      : "—"}
                   </td>
                   <td className="px-6 py-3">
                     <div className="flex justify-end gap-2">
@@ -167,7 +191,7 @@ export default function UsersPage() {
                       <Button
                         variant={u.status === "active" ? "danger" : "secondary"}
                         size="sm"
-                        onClick={() => toggleStatus(u.id)}
+                        onClick={() => toggleStatus(u)}
                       >
                         {u.status === "active" ? (
                           <>
@@ -211,6 +235,22 @@ export default function UsersPage() {
             />
           </div>
           <div>
+            <Label>Phone</Label>
+            <Input
+              type="tel"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Password (sementara)</Label>
+            <Input
+              type="text"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+          </div>
+          <div>
             <Label>Role</Label>
             <div className="grid grid-cols-2 gap-2">
               {roles.map((r) => (
@@ -224,7 +264,7 @@ export default function UsersPage() {
                       : "border-border text-ink-muted hover:bg-slate-50"
                   )}
                 >
-                  {r}
+                  {r.replace("_", " ")}
                 </button>
               ))}
             </div>
@@ -236,7 +276,9 @@ export default function UsersPage() {
           </Button>
           <Button
             onClick={addUser}
-            disabled={!form.name || !form.email}
+            disabled={
+              !form.name || !form.email || !form.phone || !form.password
+            }
           >
             <Plus className="h-4 w-4" /> Buat User
           </Button>
@@ -267,9 +309,7 @@ export default function UsersPage() {
                   <Badge tone="primary">Saat ini</Badge>
                 ) : null}
               </div>
-              <p className="text-xs text-ink-muted mt-1">
-                {rolePermissions[r].join(", ")}
-              </p>
+              <p className="text-xs text-ink-muted mt-1">{PERM_DESC[r]}</p>
             </button>
           ))}
         </div>

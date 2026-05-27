@@ -1,11 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Camera,
   CheckCircle2,
   Package,
   PackageCheck,
-  Plus,
   ShoppingCart,
   Warehouse,
   XCircle,
@@ -17,93 +16,86 @@ import { Modal } from "@/components/ui/modal";
 import { Input, Label } from "@/components/ui/input";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
-import {
-  purchaseOrders as initialPo,
-  warehouseItems as initialWh,
-  type PurchaseOrder,
-  type WarehouseItem,
-} from "@/lib/mock-data-extra";
+import { admin } from "@/lib/client";
 import { formatIDR, formatDate, cn } from "@/lib/utils";
 
 export default function WarehousePage() {
   const toast = useToast();
-  const [pos, setPos] = useState<PurchaseOrder[]>(initialPo);
-  const [items, setItems] = useState<WarehouseItem[]>(initialWh);
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"po" | "qc">("po");
-  const [poTarget, setPoTarget] = useState<PurchaseOrder | null>(null);
-  const [qcTarget, setQcTarget] = useState<WarehouseItem | null>(null);
+  const [poTarget, setPoTarget] = useState<any | null>(null);
+  const [qcTarget, setQcTarget] = useState<any | null>(null);
   const [serial, setSerial] = useState("");
   const [invoice, setInvoice] = useState("");
 
-  const recordPurchase = () => {
+  const refresh = async () => {
+    setLoading(true);
+    const res = await admin.warehousePO();
+    setLoading(false);
+    if (res.ok) setItems(res.data.items);
+  };
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const recordPurchase = async () => {
     if (!poTarget) return;
-    setPos((s) =>
-      s.map((p) =>
-        p.id === poTarget.id
-          ? { ...p, status: "purchased", invoiceNo: invoice || "INV-AUTO" }
-          : p
-      )
-    );
-    toast.success("PO tercatat", `Invoice ${invoice} disimpan untuk ${poTarget.id}`);
+    const res = await admin.recordPurchase(poTarget.asset.id, invoice);
+    if (!res.ok) return toast.danger("Gagal", res.error);
+    toast.success("PO tercatat", `Invoice ${invoice}`);
     setPoTarget(null);
     setInvoice("");
+    refresh();
   };
 
-  const performQc = (status: "passed" | "failed") => {
+  const performQc = async (result: "passed" | "failed") => {
     if (!qcTarget) return;
-    setItems((s) =>
-      s.map((w) =>
-        w.id === qcTarget.id
-          ? {
-              ...w,
-              qcStatus: status,
-              serialNumber: serial || w.serialNumber,
-              photos: 4,
-              checkedBy: "Andini Pratama",
-            }
-          : w
-      )
-    );
-    toast.success(
-      status === "passed" ? "QC Lolos" : "QC Gagal",
-      `${qcTarget.id} ditandai ${status}`
-    );
+    const res = await admin.qc(qcTarget.asset.id, result, serial || undefined, 4);
+    if (!res.ok) return toast.danger("Gagal", res.error);
+    toast.success(result === "passed" ? "QC Lolos" : "QC Gagal");
     setQcTarget(null);
     setSerial("");
+    refresh();
   };
+
+  const poList = items.filter(
+    (i) => i.asset.status === "to_purchase" || i.asset.status === "purchased"
+  );
+  const qcList = items.filter((i) => i.asset.status === "in_warehouse" || (i.asset.status === "purchased" && i.asset.qcStatus === "pending"));
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-page font-bold text-ink">Warehouse & QC</h1>
         <p className="text-ink-muted mt-1">
-          Pencatatan pembelian, penerimaan barang, dan quality control sesuai
-          PRD §11 Step 9 & 10.
+          Pencatatan pembelian, penerimaan barang, dan QC sesuai PRD §11 Step 9
+          & 10.
         </p>
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="To Purchase"
-          value={String(pos.filter((p) => p.status === "to_purchase").length)}
+          value={String(items.filter((i) => i.asset.status === "to_purchase").length)}
           Icon={ShoppingCart}
           tone="warning"
         />
         <StatCard
-          label="In Warehouse"
-          value={String(items.length)}
-          Icon={Warehouse}
+          label="Purchased"
+          value={String(items.filter((i) => i.asset.status === "purchased").length)}
+          Icon={Package}
           tone="primary"
         />
         <StatCard
           label="QC Pending"
-          value={String(items.filter((i) => i.qcStatus === "pending").length)}
-          Icon={Package}
+          value={String(items.filter((i) => i.asset.qcStatus === "pending").length)}
+          Icon={Warehouse}
           tone="warning"
         />
         <StatCard
           label="QC Passed"
-          value={String(items.filter((i) => i.qcStatus === "passed").length)}
+          value={String(items.filter((i) => i.asset.qcStatus === "passed").length)}
           Icon={PackageCheck}
           tone="success"
         />
@@ -118,56 +110,61 @@ export default function WarehousePage() {
         </TabBtn>
       </div>
 
+      {loading ? <div className="skeleton h-40" /> : null}
+
       {tab === "po" ? (
         <Card className="p-0 overflow-hidden">
-          <div className="p-6 flex items-center justify-between">
-            <CardTitle>Purchase Orders</CardTitle>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() =>
-                toast.info("Coming soon", "PO manual akan terhubung ke approval")
-              }
-            >
-              <Plus className="h-4 w-4" /> PO Manual
-            </Button>
-          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-ink-muted">
                 <tr>
-                  <th className="px-6 py-3 font-medium">PO ID</th>
+                  <th className="px-6 py-3 font-medium">Asset ID</th>
                   <th className="px-6 py-3 font-medium">Application</th>
                   <th className="px-6 py-3 font-medium">Product</th>
                   <th className="px-6 py-3 font-medium">Price</th>
                   <th className="px-6 py-3 font-medium">Status</th>
-                  <th className="px-6 py-3 font-medium">Buyer</th>
-                  <th className="px-6 py-3 font-medium text-right">Actions</th>
+                  <th className="px-6 py-3 font-medium text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {pos.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-3 font-mono text-xs">{p.id}</td>
+                {poList.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8 text-ink-muted">
+                      Tidak ada PO aktif
+                    </td>
+                  </tr>
+                ) : null}
+                {poList.map((row) => (
+                  <tr key={row.asset.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-3 font-mono text-xs">
+                      {row.asset.id}
+                    </td>
                     <td className="px-6 py-3 font-mono text-xs text-ink-muted">
-                      {p.applicationId}
+                      {row.app?.id}
                     </td>
                     <td className="px-6 py-3 font-semibold text-ink">
-                      {p.product}
+                      {row.product?.title}
                     </td>
-                    <td className="px-6 py-3">{formatIDR(p.price)}</td>
                     <td className="px-6 py-3">
-                      <PoBadge status={p.status} />
+                      {formatIDR(row.product?.price ?? 0)}
                     </td>
-                    <td className="px-6 py-3 text-ink-muted">{p.buyer}</td>
+                    <td className="px-6 py-3">
+                      <Badge
+                        tone={
+                          row.asset.status === "purchased" ? "primary" : "warning"
+                        }
+                      >
+                        {row.asset.status.replace("_", " ")}
+                      </Badge>
+                    </td>
                     <td className="px-6 py-3 text-right">
-                      {p.status === "to_purchase" ? (
-                        <Button size="sm" onClick={() => setPoTarget(p)}>
+                      {row.asset.status === "to_purchase" ? (
+                        <Button size="sm" onClick={() => setPoTarget(row)}>
                           Record Purchase
                         </Button>
                       ) : (
                         <span className="text-xs text-ink-muted">
-                          {p.invoiceNo}
+                          {row.asset.purchaseInvoiceNo}
                         </span>
                       )}
                     </td>
@@ -181,14 +178,16 @@ export default function WarehousePage() {
         <Card className="p-0 overflow-hidden">
           <div className="p-6">
             <CardTitle>Warehouse / QC</CardTitle>
-            <p className="text-sm text-ink-muted mt-0.5">
-              Foto dokumentasi, serial number, dan validasi kondisi barang.
-            </p>
           </div>
           <ul className="divide-y divide-border">
-            {items.map((w) => (
+            {qcList.length === 0 ? (
+              <li className="p-8 text-center text-sm text-ink-muted">
+                Tidak ada barang menunggu QC
+              </li>
+            ) : null}
+            {qcList.map((row) => (
               <li
-                key={w.id}
+                key={row.asset.id}
                 className="p-5 flex items-start gap-4 hover:bg-slate-50"
               >
                 <div className="h-12 w-12 rounded-2xl bg-primary-50 text-primary grid place-items-center">
@@ -196,22 +195,38 @@ export default function WarehousePage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between flex-wrap gap-2">
-                    <p className="font-semibold text-ink">{w.product}</p>
-                    <QcBadge status={w.qcStatus} />
+                    <p className="font-semibold text-ink">
+                      {row.product?.title}
+                    </p>
+                    <Badge
+                      tone={
+                        row.asset.qcStatus === "passed"
+                          ? "success"
+                          : row.asset.qcStatus === "failed"
+                            ? "danger"
+                            : "warning"
+                      }
+                    >
+                      {row.asset.qcStatus}
+                    </Badge>
                   </div>
                   <p className="text-xs text-ink-muted mt-0.5">
-                    {w.id} · PO {w.poId} · arrived {formatDate(w.arrivedAt)}
+                    {row.asset.id} · {row.app?.id}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-3 text-xs text-ink-muted">
-                    {w.serialNumber ? (
-                      <span>Serial: <span className="font-mono">{w.serialNumber}</span></span>
+                    {row.asset.imeiOrSerial ? (
+                      <span>
+                        Serial:{" "}
+                        <span className="font-mono">
+                          {row.asset.imeiOrSerial}
+                        </span>
+                      </span>
                     ) : null}
-                    <span>{w.photos} foto QC</span>
-                    {w.checkedBy ? <span>Checked by {w.checkedBy}</span> : null}
+                    <span>{row.asset.qcPhotoCount} foto QC</span>
                   </div>
                 </div>
-                {w.qcStatus === "pending" ? (
-                  <Button size="sm" onClick={() => setQcTarget(w)}>
+                {row.asset.qcStatus === "pending" ? (
+                  <Button size="sm" onClick={() => setQcTarget(row)}>
                     <Camera className="h-4 w-4" /> Mulai QC
                   </Button>
                 ) : null}
@@ -225,14 +240,17 @@ export default function WarehousePage() {
         open={poTarget !== null}
         onClose={() => setPoTarget(null)}
         title="Record Purchase"
-        description={`Catat invoice & buyer untuk ${poTarget?.id}`}
+        description={`Catat invoice untuk ${poTarget?.asset.id}`}
       >
         <div className="space-y-3">
-          <Row label="Product" value={poTarget?.product ?? ""} />
-          <Row label="Marketplace" value={poTarget?.marketplace ?? ""} />
+          <Row label="Product" value={poTarget?.product?.title ?? ""} />
+          <Row
+            label="Marketplace"
+            value={poTarget?.product?.marketplace ?? ""}
+          />
           <Row
             label="Price"
-            value={poTarget ? formatIDR(poTarget.price) : ""}
+            value={poTarget ? formatIDR(poTarget.product?.price ?? 0) : ""}
           />
           <div>
             <Label>Nomor Invoice</Label>
@@ -247,7 +265,10 @@ export default function WarehousePage() {
           <Button variant="secondary" onClick={() => setPoTarget(null)}>
             Batal
           </Button>
-          <Button onClick={recordPurchase} disabled={!invoice.trim()}>
+          <Button
+            onClick={recordPurchase}
+            disabled={!invoice.trim() || invoice.length < 4}
+          >
             Simpan PO
           </Button>
         </div>
@@ -257,14 +278,14 @@ export default function WarehousePage() {
         open={qcTarget !== null}
         onClose={() => setQcTarget(null)}
         title="Quality Control"
-        description={`QC barang ${qcTarget?.product}`}
+        description={`QC barang ${qcTarget?.product?.title}`}
         size="lg"
       >
         <div className="grid sm:grid-cols-3 gap-3 mb-5">
           {[1, 2, 3].map((i) => (
             <button
               key={i}
-              onClick={() => toast.info("Upload foto", `Foto ${i} disimpan`)}
+              onClick={() => toast.info("Foto disimpan", `Slot ${i}`)}
               className="aspect-square rounded-2xl border-2 border-dashed border-border bg-slate-50 grid place-items-center hover:border-primary"
             >
               <div className="text-center">
@@ -285,9 +306,8 @@ export default function WarehousePage() {
           </div>
           <div className="rounded-2xl bg-slate-50 p-3 text-xs text-ink-muted space-y-1">
             <p>✓ Periksa kondisi fisik barang</p>
-            <p>✓ Pastikan kelengkapan accessories</p>
+            <p>✓ Kelengkapan accessories</p>
             <p>✓ Validasi serial sesuai invoice</p>
-            <p>✓ Foto dari 3 sudut berbeda</p>
           </div>
         </div>
         <div className="mt-5 flex justify-end gap-3">
@@ -325,27 +345,6 @@ function TabBtn({
       {children}
     </button>
   );
-}
-
-function PoBadge({ status }: { status: PurchaseOrder["status"] }) {
-  const map = {
-    to_purchase: { tone: "warning" as const, label: "To Purchase" },
-    purchased: { tone: "primary" as const, label: "Purchased" },
-    shipped_to_warehouse: { tone: "info" as const, label: "Shipping" },
-    received: { tone: "success" as const, label: "Received" },
-  };
-  const m = map[status];
-  return <Badge tone={m.tone}>{m.label}</Badge>;
-}
-
-function QcBadge({ status }: { status: WarehouseItem["qcStatus"] }) {
-  const map = {
-    pending: { tone: "warning" as const, label: "Pending" },
-    passed: { tone: "success" as const, label: "Passed" },
-    failed: { tone: "danger" as const, label: "Failed" },
-  };
-  const m = map[status];
-  return <Badge tone={m.tone}>{m.label}</Badge>;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

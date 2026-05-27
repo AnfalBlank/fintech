@@ -1,75 +1,96 @@
 "use client";
-import { useState } from "react";
-import { Bell, CheckCircle2, AlertCircle, Truck, CreditCard } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Bell,
+  CheckCircle2,
+  AlertCircle,
+  Truck,
+  CreditCard,
+  ShieldAlert,
+  Bell as BellIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { customer } from "@/lib/client";
 
 type Notif = {
   id: string;
-  Icon: any;
-  tone: "success" | "warning" | "primary";
+  type: string;
+  tone: "success" | "info" | "warning" | "danger";
   title: string;
-  desc: string;
-  time: string;
-  unread: boolean;
+  body?: string;
+  createdAt: number | string;
+  readAt?: number | string | null;
 };
 
-const initial: Notif[] = [
-  {
-    id: "n1",
-    Icon: CheckCircle2,
-    tone: "success",
-    title: "Pengajuan disetujui",
-    desc: "APP-2026-00231 berhasil disetujui",
-    time: "2 mnt lalu",
-    unread: true,
-  },
-  {
-    id: "n2",
-    Icon: Truck,
-    tone: "primary",
-    title: "Barang dalam perjalanan",
-    desc: "Kurir Adi Saputra · ETA 14:00",
-    time: "1 jam lalu",
-    unread: true,
-  },
-  {
-    id: "n3",
-    Icon: AlertCircle,
-    tone: "warning",
-    title: "Reminder cicilan",
-    desc: "Jatuh tempo MacBook Air 12 Juni 2026",
-    time: "3 jam lalu",
-    unread: false,
-  },
-  {
-    id: "n4",
-    Icon: CreditCard,
-    tone: "success",
-    title: "Pembayaran diterima",
-    desc: "Cicilan ke-2 MacBook Air Rp 2.750.000",
-    time: "Kemarin",
-    unread: false,
-  },
-];
+const toneStyles: Record<Notif["tone"], string> = {
+  success: "bg-emerald/10 text-emerald",
+  info: "bg-primary-50 text-primary",
+  warning: "bg-warning/10 text-warning",
+  danger: "bg-danger/10 text-danger",
+};
 
-export function NotificationsPopover({ darkButton = false }: { darkButton?: boolean }) {
+const TYPE_ICON: Record<string, any> = {
+  approval_update: CheckCircle2,
+  delivery_update: Truck,
+  payment_reminder: AlertCircle,
+  payment_success: CreditCard,
+  fraud_alert: ShieldAlert,
+  system: BellIcon,
+};
+
+function timeAgo(d: number | string): string {
+  const ts = typeof d === "string" ? new Date(d).getTime() : d * 1000;
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "baru saja";
+  if (min < 60) return `${min} mnt lalu`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} jam lalu`;
+  const day = Math.floor(h / 24);
+  return `${day} hari lalu`;
+}
+
+export function NotificationsPopover() {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<Notif[]>(initial);
-  const unread = items.filter((i) => i.unread).length;
+  const [items, setItems] = useState<Notif[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const markAll = () => setItems((s) => s.map((i) => ({ ...i, unread: false })));
+  const refresh = async () => {
+    setLoading(true);
+    const res = await customer.notifications();
+    setLoading(false);
+    if (res.ok) setItems(res.data.items);
+  };
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const unread = items.filter((i) => !i.readAt).length;
+
+  const markAll = async () => {
+    await customer.markNotificationsRead();
+    setItems((s) => s.map((i) => ({ ...i, readAt: Date.now() / 1000 })));
+  };
+
+  const markOne = async (id: string) => {
+    await customer.markNotificationsRead([id]);
+    setItems((s) =>
+      s.map((i) => (i.id === id ? { ...i, readAt: Date.now() / 1000 } : i))
+    );
+  };
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((s) => !s)}
-        className={cn(
-          "relative h-10 w-10 rounded-2xl border border-border grid place-items-center transition",
-          darkButton
-            ? "bg-white hover:bg-slate-50"
-            : "bg-white hover:bg-slate-50"
-        )}
+        onClick={() => {
+          setOpen((s) => !s);
+          if (!open) refresh();
+        }}
+        className="relative h-10 w-10 rounded-2xl border border-border grid place-items-center bg-white hover:bg-slate-50"
         aria-label="Notifications"
       >
         <Bell className="h-5 w-5 text-ink" />
@@ -80,10 +101,7 @@ export function NotificationsPopover({ darkButton = false }: { darkButton?: bool
 
       {open ? (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-          />
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 mt-2 w-[340px] z-50 card-base p-0 overflow-hidden shadow-float">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <p className="font-semibold text-ink text-sm">Notifikasi</p>
@@ -97,47 +115,49 @@ export function NotificationsPopover({ darkButton = false }: { darkButton?: bool
               ) : null}
             </div>
             <ul className="max-h-[60vh] overflow-y-auto divide-y divide-border">
+              {loading ? (
+                <li className="p-6 text-center text-xs text-ink-muted">
+                  Memuat…
+                </li>
+              ) : items.length === 0 ? (
+                <li className="p-6 text-center text-xs text-ink-muted">
+                  Tidak ada notifikasi
+                </li>
+              ) : null}
               {items.map((n) => {
-                const tones = {
-                  success: "bg-emerald/10 text-emerald",
-                  warning: "bg-warning/10 text-warning",
-                  primary: "bg-primary-50 text-primary",
-                };
+                const Icon = TYPE_ICON[n.type] ?? BellIcon;
+                const isUnread = !n.readAt;
                 return (
                   <li
                     key={n.id}
+                    onClick={() => isUnread && markOne(n.id)}
                     className={cn(
                       "p-4 flex gap-3 hover:bg-slate-50 cursor-pointer",
-                      n.unread && "bg-primary-50/30"
+                      isUnread && "bg-primary-50/30"
                     )}
-                    onClick={() =>
-                      setItems((s) =>
-                        s.map((i) =>
-                          i.id === n.id ? { ...i, unread: false } : i
-                        )
-                      )
-                    }
                   >
                     <div
                       className={cn(
                         "h-9 w-9 rounded-2xl grid place-items-center flex-shrink-0",
-                        tones[n.tone]
+                        toneStyles[n.tone]
                       )}
                     >
-                      <n.Icon className="h-4 w-4" />
+                      <Icon className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-ink truncate">
                         {n.title}
                       </p>
-                      <p className="text-xs text-ink-muted line-clamp-2">
-                        {n.desc}
-                      </p>
+                      {n.body ? (
+                        <p className="text-xs text-ink-muted line-clamp-2">
+                          {n.body}
+                        </p>
+                      ) : null}
                       <p className="text-[11px] text-ink-muted mt-1">
-                        {n.time}
+                        {timeAgo(n.createdAt)}
                       </p>
                     </div>
-                    {n.unread ? (
+                    {isUnread ? (
                       <span className="h-2 w-2 rounded-full bg-primary self-center" />
                     ) : null}
                   </li>

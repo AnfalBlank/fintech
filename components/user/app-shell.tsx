@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { NotificationsPopover } from "@/components/ui/notifications";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
+import { auth } from "@/lib/client";
 
 const navItems = [
   { href: "/dashboard", label: "Beranda", Icon: Home },
@@ -34,7 +35,8 @@ export function UserAppShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
 
-  const onLogout = () => {
+  const onLogout = async () => {
+    await auth.logout();
     toast.success("Berhasil keluar", "Anda telah logout dari akun");
     router.push("/login");
   };

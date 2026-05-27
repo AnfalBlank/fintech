@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Link2,
@@ -13,46 +13,48 @@ import {
   Smartphone,
   PackageCheck,
 } from "lucide-react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
+import { customer } from "@/lib/client";
+import { setApply, clearApply } from "@/lib/apply-store";
 import { formatIDR } from "@/lib/utils";
-import { sampleProduct } from "@/lib/mock-data";
 
 export default function ApplyPage() {
   const router = useRouter();
   const toast = useToast();
   const [link, setLink] = useState("");
-  const [isPending, startTransition] = useTransition();
-  const [scraped, setScraped] = useState<typeof sampleProduct | null>(null);
   const [loading, setLoading] = useState(false);
+  const [scraped, setScraped] = useState<any | null>(null);
 
-  const isValidLink = (l: string) =>
-    /tokopedia|shopee|lazada|tiktok/i.test(l) ||
-    l.startsWith("http");
-
-  const onPaste = async () => {
+  const onScrape = async () => {
     if (!link.trim()) return;
-    if (!isValidLink(link)) {
-      toast.warning(
-        "Link tidak dikenali",
-        "Hanya Tokopedia, Shopee, TikTok Shop, atau Lazada"
-      );
-      return;
-    }
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1100));
-    setScraped(sampleProduct);
+    const res = await customer.scrape(link);
     setLoading(false);
-    toast.success("Produk berhasil diambil", sampleProduct.title);
+    if (!res.ok) return toast.danger("Gagal ambil data produk", res.error);
+    setScraped(res.data.product);
+    setApply({
+      productUrl: link,
+      product: res.data.product,
+      simulations: res.data.simulations,
+    });
+    toast.success("Produk berhasil diambil");
+    if (res.data.product.highRisk) {
+      toast.warning(
+        "Kategori high risk",
+        "Pengajuan akan butuh DP lebih besar"
+      );
+    }
+  };
+
+  const useSample = () => {
+    setLink("https://tokopedia.com/sample/iphone-15-pro");
   };
 
   const onContinue = () => {
-    startTransition(() => {
-      router.push("/apply/simulate");
-    });
+    router.push("/apply/simulate");
   };
 
   return (
@@ -80,10 +82,7 @@ export default function ApplyPage() {
 
         <div className="mt-3 flex flex-wrap gap-2">
           {["Tokopedia", "Shopee", "TikTok Shop", "Lazada"].map((m) => (
-            <span
-              key={m}
-              className="chip bg-slate-100 text-ink-muted"
-            >
+            <span key={m} className="chip bg-slate-100 text-ink-muted">
               <Store className="h-3 w-3" /> {m}
             </span>
           ))}
@@ -94,7 +93,7 @@ export default function ApplyPage() {
           className="mt-5"
           size="lg"
           disabled={!link || loading}
-          onClick={onPaste}
+          onClick={onScrape}
         >
           {loading ? (
             <>
@@ -111,10 +110,7 @@ export default function ApplyPage() {
         {!scraped && !loading ? (
           <button
             type="button"
-            onClick={() => {
-              setLink("https://tokopedia.com/sample/iphone-15-pro");
-              onPaste();
-            }}
+            onClick={useSample}
             className="mt-3 text-sm text-primary font-medium hover:underline"
           >
             Atau gunakan contoh produk →
@@ -122,7 +118,6 @@ export default function ApplyPage() {
         ) : null}
       </Card>
 
-      {/* Loading skeleton */}
       {loading ? (
         <Card>
           <div className="flex gap-4">
@@ -136,18 +131,23 @@ export default function ApplyPage() {
         </Card>
       ) : null}
 
-      {/* Product preview */}
       {scraped ? (
         <Card className="animate-fadeIn">
           <div className="flex items-start justify-between">
             <CardTitle>Preview Produk</CardTitle>
-            <Badge tone="success">
-              <ShieldCheck className="h-3.5 w-3.5" /> Kategori Aman
-            </Badge>
+            {scraped.highRisk ? (
+              <Badge tone="danger">
+                <ShieldAlert className="h-3.5 w-3.5" /> High Risk
+              </Badge>
+            ) : (
+              <Badge tone="success">
+                <ShieldCheck className="h-3.5 w-3.5" /> Kategori Aman
+              </Badge>
+            )}
           </div>
           <div className="mt-4 flex gap-4">
             <img
-              src={scraped.image}
+              src={scraped.imageUrl}
               alt={scraped.title}
               className="h-28 w-28 rounded-2xl object-cover bg-slate-100"
             />
@@ -156,12 +156,12 @@ export default function ApplyPage() {
                 {scraped.title}
               </p>
               <p className="text-sm text-ink-muted mt-1 flex items-center gap-1.5">
-                <Store className="h-3.5 w-3.5" /> {scraped.store}
+                <Store className="h-3.5 w-3.5" /> {scraped.storeName}
               </p>
               <div className="flex items-center gap-3 mt-1.5 text-xs">
                 <span className="flex items-center gap-1 text-warning font-semibold">
                   <Star className="h-3.5 w-3.5 fill-warning" />
-                  {scraped.rating}
+                  {scraped.storeRating}
                 </span>
                 <span className="text-ink-muted">·</span>
                 <span className="text-ink-muted">{scraped.marketplace}</span>
@@ -176,23 +176,15 @@ export default function ApplyPage() {
 
           <div className="mt-5 grid grid-cols-3 gap-3">
             <Stat label="Resale Score" value={`${scraped.resaleScore}/100`} Icon={Sparkles} />
-            <Stat label="Kategori" value="Smartphone" Icon={Smartphone} />
+            <Stat label="Kategori" value={scraped.category.split(" ")[0]} Icon={Smartphone} />
             <Stat label="QC Required" value="Ya" Icon={PackageCheck} />
           </div>
 
-          <Button block size="lg" className="mt-6" onClick={onContinue} disabled={isPending}>
+          <Button block size="lg" className="mt-6" onClick={onContinue}>
             Lanjut ke Simulasi <ArrowRight className="h-4 w-4" />
           </Button>
         </Card>
       ) : null}
-
-      {/* Help */}
-      <div className="text-center text-sm text-ink-muted">
-        Butuh bantuan?{" "}
-        <Link href="/dashboard" className="text-primary font-semibold">
-          Lihat panduan
-        </Link>
-      </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
@@ -20,6 +20,8 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
+import { auth } from "@/lib/client";
+import { formatIDR } from "@/lib/utils";
 
 type ModalKey =
   | null
@@ -35,8 +37,16 @@ export default function ProfilePage() {
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState<ModalKey>(null);
+  const [user, setUser] = useState<any | null>(null);
 
-  const onLogout = () => {
+  useEffect(() => {
+    auth.me().then((res) => {
+      if (res.ok) setUser(res.data.user);
+    });
+  }, []);
+
+  const onLogout = async () => {
+    await auth.logout();
     toast.success("Berhasil keluar");
     router.push("/login");
   };
@@ -46,13 +56,16 @@ export default function ProfilePage() {
       <Card>
         <div className="flex items-center gap-4">
           <div className="h-16 w-16 rounded-3xl bg-primary text-white grid place-items-center text-2xl font-bold">
-            R
+            {user?.name?.charAt(0) ?? "?"}
           </div>
           <div className="flex-1">
-            <p className="text-section font-bold text-ink">Rafi Aditya</p>
-            <p className="text-sm text-ink-muted">+62 812-9931-2210</p>
+            <p className="text-section font-bold text-ink">
+              {user?.name ?? "Loading..."}
+            </p>
+            <p className="text-sm text-ink-muted">{user?.phone ?? "—"}</p>
             <Badge tone="primary" className="mt-2">
-              <Sparkles className="h-3.5 w-3.5" /> Trust Level 2
+              <Sparkles className="h-3.5 w-3.5" /> Trust Level{" "}
+              {user?.trustLevel ?? 1}
             </Badge>
           </div>
         </div>
@@ -61,12 +74,15 @@ export default function ProfilePage() {
           <div className="flex items-center justify-between text-sm">
             <span className="text-ink-muted">Limit Anda</span>
             <span className="font-semibold text-ink">
-              Rp 3.500.000 / Rp 5.000.000
+              {formatIDR(user?.limit ?? 0)}
             </span>
           </div>
-          <Progress value={70} className="mt-2" />
+          <Progress
+            value={user ? Math.min(100, (user.trustLevel / 3) * 100) : 0}
+            className="mt-2"
+          />
           <p className="text-xs text-ink-muted mt-2">
-            Lunasi cicilan tepat waktu untuk naik ke Level 3
+            Lunasi cicilan tepat waktu untuk naik trust level.
           </p>
         </div>
       </Card>
@@ -129,15 +145,15 @@ export default function ProfilePage() {
         <div className="space-y-3">
           <div>
             <Label>Nama Lengkap</Label>
-            <Input defaultValue="Rafi Aditya" />
+            <Input defaultValue={user?.name ?? ""} />
           </div>
           <div>
             <Label>Alamat Domisili</Label>
-            <Input defaultValue="Jl. Kemang Selatan No. 12, Jakarta Selatan" />
+            <Input defaultValue={user?.address ?? user?.city ?? ""} />
           </div>
           <div>
             <Label>Pekerjaan</Label>
-            <Input defaultValue="Karyawan Tetap" />
+            <Input defaultValue={user?.occupation ?? ""} />
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-3">

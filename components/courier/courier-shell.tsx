@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Home, Truck, History, LogOut, User } from "lucide-react";
+import { Home, History, LogOut, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { auth } from "@/lib/client";
 
 const nav = [
-  { href: "/courier", label: "Tugas Hari Ini", Icon: Home },
+  { href: "/courier", label: "Tugas", Icon: Home },
   { href: "/courier/history", label: "Riwayat", Icon: History },
   { href: "/courier/profile", label: "Profil", Icon: User },
 ];
@@ -15,6 +16,12 @@ export function CourierShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const toast = useToast();
+
+  const onLogout = async () => {
+    await auth.logout();
+    toast.success("Logout berhasil");
+    router.push("/login");
+  };
 
   return (
     <div className="min-h-screen bg-bg flex flex-col max-w-md mx-auto border-x border-border pb-20">
@@ -30,10 +37,7 @@ export function CourierShell({ children }: { children: React.ReactNode }) {
             </div>
           </Link>
           <button
-            onClick={() => {
-              toast.success("Logout berhasil");
-              router.push("/login");
-            }}
+            onClick={onLogout}
             className="text-ink-muted hover:text-ink"
             aria-label="Logout"
           >

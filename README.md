@@ -18,13 +18,14 @@ Built sesuai [`prd.md`](./prd.md) dan [`desaign.md`](./desaign.md).
 | Layer | Tech |
 |---|---|
 | Framework | Next.js 14 App Router + TypeScript |
-| Styling | Tailwind CSS dengan design tokens dari `desaign.md` |
-| Komponen | shadcn-style (Button, Card, Input, Badge, Progress, Modal, Toast, Skeleton) |
-| Animasi | Framer Motion |
-| Ikon | lucide-react (outline icons) |
-| Font | Inter (Google Fonts) |
+| Frontend | Tailwind + shadcn-style komponen + Framer Motion + lucide-react |
+| Backend | Next.js Route Handlers (`app/api/**`) — type-safe end-to-end |
+| Database | **Turso (libSQL)** via Drizzle ORM |
+| Auth | JWT cookie session (HS256) + OTP + bcrypt password |
+| Validation | Zod |
+| Storage | Cloudflare R2 / S3 (siap diintegrasi) |
 
-Stack ini siap di-pair dengan backend NestJS + PostgreSQL + Redis Queue + Cloudflare R2 sesuai PRD §23.
+Stack ini production-ready: build sekali, deploy sebagai satu Next.js app (Vercel / self-host) dengan Turso sebagai DB.
 
 ---
 
@@ -34,8 +35,27 @@ Stack ini siap di-pair dengan backend NestJS + PostgreSQL + Redis Queue + Cloudf
 git clone https://github.com/AnfalBlank/fintech.git
 cd fintech
 npm install
+
+# Setup env (sudah ada .env.local di repo)
+# Push schema ke Turso (sudah dilakukan):
+npx drizzle-kit push --force
+
+# Seed demo data:
+npm run db:seed
+
 npm run dev      # http://localhost:3000
 ```
+
+Demo accounts (password `password123`):
+- Customer: `rafi@example.com` / `+628129931221`
+- Super admin: `bagus@manggala.id`
+- Finance admin: `andini@manggala.id`
+- Collection: `cahyo@manggala.id`
+- Delivery: `yusuf@manggala.id`
+- Surveyor: `eka@manggala.id`
+- Courier: `adi@manggala.id`
+
+Customer baru daftar via `/register` → OTP 6 digit ditampilkan di toast (dev mode).
 
 Build production:
 
@@ -94,9 +114,9 @@ Dirancang mobile-first sesuai PRD §20.
 
 ---
 
-## Logika Bisnis (Frontend Mock)
+## Logika Bisnis
 
-[`lib/financing.ts`](./lib/financing.ts) — implementasi PRD §6, §7, §8:
+[`lib/financing.ts`](./lib/financing.ts) — implementasi PRD §6, §7, §8, §15, §16:
 
 ```ts
 // Margin per tenor
@@ -109,9 +129,40 @@ Harga ≤ 3jt + risk bagus + tenor ≤ 3 → No DP
 Harga 3–5jt   → 10%
 Harga 5–10jt  → 20%
 Harga > 10jt  → 30%
+
+// Risk components dengan bobot PRD §15
+Penghasilan 25%, Pekerjaan 20%, Barang 20%, DP 15%, Lokasi 10%, Device 10%
+→ Grade A (≥80) auto approve · B semi · C supervisor · D reject
 ```
 
-[`lib/mock-data.ts`](./lib/mock-data.ts) & [`lib/mock-data-extra.ts`](./lib/mock-data-extra.ts) — data demo: applications, installments, deliveries, fraud alerts, assets, collections, purchase orders, warehouse items, role users, courier tasks.
+`db/schema.ts` — 15 tabel sesuai PRD §24:
+- `users`, `devices`, `products`, `applications`, `risk_scores`, `installments`,
+  `payments`, `assets`, `deliveries`, `delivery_proofs`, `fraud_logs`,
+  `blacklists`, `notifications`, `otps`, `audit_logs`
+
+Lihat [`docs/API.md`](./docs/API.md) untuk semua endpoint.
+
+---
+
+## Database (Turso)
+
+Schema dipush ke Turso via Drizzle:
+
+```bash
+# Generate migration files (optional)
+npm run db:generate
+
+# Push schema langsung
+npx drizzle-kit push --force
+
+# Drizzle Studio (GUI)
+npm run db:studio
+
+# Reseed demo data
+npm run db:seed
+```
+
+`.env.local` berisi `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `JWT_SECRET`.
 
 ---
 
@@ -236,10 +287,14 @@ Merchant integration, public financing API, AI collection prediction, marketplac
 
 ## Catatan Implementasi
 
-- Semua data masih mock (di `lib/mock-data*.ts`) — siap diganti dengan API layer
-- Auth, OTP, file upload, dan payment dimock dengan `setTimeout` untuk demo flow
-- State management masih lokal (`useState`) — bisa di-upgrade ke Zustand / TanStack Query saat hubung ke backend
-- Tidak ada test runner setup; siap di-pair dengan Vitest atau Playwright
+- **Frontend memakai REST APIs di `app/api/**`** — siap di-deploy sebagai monolith Next.js
+- **Database**: 15 tabel Turso (libSQL) via Drizzle ORM
+- **Auth**: JWT cookie session (HS256), bcrypt password, OTP 6-digit (dev mode tampilkan kode di response)
+- **RBAC**: setiap admin endpoint cek role via `requireAuth([roles])`
+- **Audit log**: setiap aksi admin (approve, qc, assign, blacklist) tercatat di `audit_logs`
+- **Side effects** chain: approve → buat asset → QC → buat delivery → kurir submit proof → app active → generate installments
+- **Marketplace scraping**: `lib/scrape.ts` mock dengan 6 produk; ganti dengan integrasi marketplace API saat go-live
+- **Payment gateway**: VA/QRIS/E-Wallet payload mock; di prod ganti ke webhook Midtrans/Xendit di `/api/payments/[id]/confirm`
 
 ---
 

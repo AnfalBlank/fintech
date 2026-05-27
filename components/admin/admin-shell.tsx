@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { NotificationsPopover } from "@/components/ui/notifications";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
+import { auth } from "@/lib/client";
 
 const nav = [
   { href: "/admin", label: "Overview", Icon: LayoutDashboard, exact: true },
@@ -43,7 +44,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
 
-  const onLogout = () => {
+  const onLogout = async () => {
+    await auth.logout();
     toast.success("Berhasil keluar", "Sesi admin diakhiri");
     router.push("/login");
   };

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Check,
   ChevronRight,
@@ -16,8 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { applications as initialApps } from "@/lib/mock-data";
-import type { Application } from "@/lib/mock-data";
+import { admin } from "@/lib/client";
 import { formatIDR, formatDate, cn } from "@/lib/utils";
 
 const filters = [
@@ -32,56 +31,70 @@ type ActionType = "approve" | "reject" | "hold" | null;
 
 export default function ApprovalsPage() {
   const toast = useToast();
-  const [items, setItems] = useState<Application[]>(initialApps);
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<(typeof filters)[number]["key"]>("all");
-  const [selectedId, setSelectedId] = useState<string>(initialApps[0].id);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<any | null>(null);
   const [action, setAction] = useState<ActionType>(null);
-  const [previewDoc, setPreviewDoc] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  const [previewDoc, setPreviewDoc] = useState<string | null>(null);
+
+  const refresh = async () => {
+    setLoading(true);
+    const res = await admin.applications();
+    setLoading(false);
+    if (!res.ok) return toast.danger("Gagal memuat", res.error);
+    setItems(res.data.items);
+    if (!selectedId && res.data.items[0]) {
+      setSelectedId(res.data.items[0].app.id);
+    }
+  };
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    admin.applications().then(() => {});
+    fetch(`/api/applications/${selectedId}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok) setDetail(j.data);
+      });
+  }, [selectedId]);
 
   const list = useMemo(
     () =>
-      filter === "all" ? items : items.filter((a) => a.status === filter),
+      filter === "all"
+        ? items
+        : items.filter((i) => i.app.status === filter),
     [items, filter]
   );
 
-  const selected = items.find((a) => a.id === selectedId) ?? items[0];
+  const selected = list.find((x) => x.app.id === selectedId) ?? list[0];
 
-  const updateStatus = (
-    id: string,
-    status: Application["status"],
-    note?: string
-  ) => {
-    setItems((s) =>
-      s.map((a) => (a.id === id ? { ...a, status } : a))
-    );
-    if (status === "approved") {
-      toast.success("Pengajuan disetujui", `${id} berhasil disetujui`);
-    } else if (status === "rejected") {
-      toast.danger(
-        "Pengajuan ditolak",
-        note ? `Alasan: ${note}` : `${id} telah ditolak`
-      );
-    } else {
-      toast.info(
-        "Diteruskan ke Supervisor",
-        `${id} menunggu review supervisor`
-      );
-    }
-  };
-
-  const confirmAction = () => {
+  const confirmAction = async () => {
     if (!selected) return;
-    if (action === "approve") {
-      updateStatus(selected.id, "approved");
-    } else if (action === "reject") {
-      updateStatus(selected.id, "rejected", reason);
-    } else if (action === "hold") {
-      updateStatus(selected.id, "manual_review");
+    const id = selected.app.id;
+    if (action === "reject" && reason.trim().length < 5) {
+      return toast.warning("Reason minimal 5 karakter");
     }
+    const res = await admin.decide(
+      id,
+      action!,
+      action === "reject" ? reason : undefined
+    );
+    if (!res.ok) return toast.danger("Gagal", res.error);
+    if (action === "approve") toast.success("Disetujui");
+    else if (action === "reject") toast.danger("Ditolak");
+    else toast.info("Diteruskan ke supervisor");
     setAction(null);
     setReason("");
+    refresh();
   };
+
+  if (loading) return <div className="skeleton h-96" />;
 
   return (
     <div className="space-y-5">
@@ -110,7 +123,6 @@ export default function ApprovalsPage() {
       </div>
 
       <div className="grid lg:grid-cols-[400px_1fr] gap-5">
-        {/* Left: list */}
         <Card className="p-0 overflow-hidden h-[720px] flex flex-col">
           <div className="px-5 py-4 border-b border-border bg-slate-50">
             <p className="text-sm font-semibold text-ink">
@@ -123,7 +135,8 @@ export default function ApprovalsPage() {
                 Tidak ada pengajuan pada filter ini.
               </li>
             ) : null}
-            {list.map((a) => {
+            {list.map((row) => {
+              const a = row.app;
               const active = a.id === selectedId;
               return (
                 <li key={a.id}>
@@ -135,38 +148,40 @@ export default function ApprovalsPage() {
                     )}
                   >
                     <img
-                      src={a.product.image}
-                      alt={a.product.title}
+                      src={row.product?.imageUrl}
+                      alt=""
                       className="h-12 w-12 rounded-xl object-cover bg-slate-100 flex-shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start gap-2 justify-between">
                         <p className="font-semibold text-ink truncate text-sm">
-                          {a.user.name}
+                          {row.user?.name}
                         </p>
-                        <Badge
-                          tone={
-                            a.riskGrade === "A"
-                              ? "success"
-                              : a.riskGrade === "B"
-                                ? "primary"
-                                : a.riskGrade === "C"
-                                  ? "warning"
-                                  : "danger"
-                          }
-                        >
-                          {a.riskGrade}
-                        </Badge>
+                        {a.riskGrade ? (
+                          <Badge
+                            tone={
+                              a.riskGrade === "A"
+                                ? "success"
+                                : a.riskGrade === "B"
+                                  ? "primary"
+                                  : a.riskGrade === "C"
+                                    ? "warning"
+                                    : "danger"
+                            }
+                          >
+                            {a.riskGrade}
+                          </Badge>
+                        ) : null}
                       </div>
                       <p className="text-xs text-ink-muted truncate">
-                        {a.product.title}
+                        {row.product?.title}
                       </p>
                       <div className="mt-1.5 flex items-center justify-between">
                         <p className="text-sm font-semibold text-primary">
-                          {formatIDR(a.total || a.product.price)}
+                          {formatIDR(a.total)}
                         </p>
                         <p className="text-xs text-ink-muted">
-                          {formatDate(a.submittedAt)}
+                          {formatDate(new Date(a.submittedAt))}
                         </p>
                       </div>
                     </div>
@@ -178,148 +193,149 @@ export default function ApprovalsPage() {
           </ul>
         </Card>
 
-        {/* Right: detail */}
-        <div className="space-y-5">
-          <Card>
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex gap-4 flex-1 min-w-0">
-                <img
-                  src={selected.product.image}
-                  alt={selected.product.title}
-                  className="h-20 w-20 rounded-2xl object-cover bg-slate-100"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+        {selected ? (
+          <div className="space-y-5">
+            <Card>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex gap-4 flex-1 min-w-0">
+                  <img
+                    src={selected.product?.imageUrl}
+                    alt=""
+                    className="h-20 w-20 rounded-2xl object-cover bg-slate-100"
+                  />
+                  <div className="flex-1 min-w-0">
                     <p className="font-mono text-xs text-ink-muted">
-                      {selected.id}
+                      {selected.app.id}
                     </p>
-                    <StatusInlineBadge status={selected.status} />
-                  </div>
-                  <p className="text-cardtitle font-bold text-ink">
-                    {selected.product.title}
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <Badge tone="muted">{selected.product.marketplace}</Badge>
-                    <Badge tone="muted">{selected.product.category}</Badge>
+                    <p className="text-cardtitle font-bold text-ink">
+                      {selected.product?.title}
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <Badge tone="muted">{selected.product?.marketplace}</Badge>
+                      <Badge tone="muted">{selected.product?.category}</Badge>
+                    </div>
                   </div>
                 </div>
+                <div className="text-right">
+                  <p className="text-xs text-ink-muted">Harga produk</p>
+                  <p className="text-section font-bold text-ink">
+                    {formatIDR(selected.product?.price ?? 0)}
+                  </p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-xs text-ink-muted">Harga produk</p>
-                <p className="text-section font-bold text-ink">
-                  {formatIDR(selected.product.price)}
-                </p>
-              </div>
-            </div>
 
-            <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Mini label="Tenor" value={`${selected.tenor} bln`} />
-              <Mini label="DP" value={formatIDR(selected.dp)} />
-              <Mini label="Cicilan/bln" value={formatIDR(selected.monthly)} />
-              <Mini label="Total" value={formatIDR(selected.total)} />
-            </div>
-          </Card>
-
-          <div className="grid lg:grid-cols-2 gap-5">
-            <Card>
-              <CardTitle>Profil User</CardTitle>
-              <div className="mt-4 space-y-3">
-                <Info
-                  Icon={UserIcon}
-                  label={selected.user.name}
-                  sub={`Trust Level ${selected.user.trustLevel}`}
-                />
-                <Info Icon={Phone} label={selected.user.phone} />
-                <Info Icon={MapPin} label={selected.user.city} />
-                <Info
-                  Icon={Building2}
-                  label="Karyawan Tetap"
-                  sub="Penghasilan Rp 12.000.000"
-                />
+              <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <Mini label="Tenor" value={`${selected.app.tenor} bln`} />
+                <Mini label="DP" value={formatIDR(selected.app.dpAmount)} />
+                <Mini label="Cicilan/bln" value={formatIDR(selected.app.monthly)} />
+                <Mini label="Total" value={formatIDR(selected.app.total)} />
               </div>
             </Card>
 
-            <Card>
-              <CardTitle>Risk Score</CardTitle>
-              <div className="mt-4 flex items-center gap-5">
-                <RiskCircle
-                  score={selected.riskScore}
-                  grade={selected.riskGrade}
-                />
-                <div className="flex-1 space-y-2">
-                  <ScoreRow label="Penghasilan (25%)" pct={82} />
-                  <ScoreRow label="Pekerjaan (20%)" pct={75} />
-                  <ScoreRow label="Kategori barang (20%)" pct={88} />
-                  <ScoreRow label="DP (15%)" pct={70} />
-                  <ScoreRow label="Lokasi (10%)" pct={84} />
-                  <ScoreRow label="Device trust (10%)" pct={70} />
+            <div className="grid lg:grid-cols-2 gap-5">
+              <Card>
+                <CardTitle>Profil User</CardTitle>
+                <div className="mt-4 space-y-3">
+                  <Info
+                    Icon={UserIcon}
+                    label={selected.user?.name ?? "—"}
+                    sub={`Trust Level ${selected.user?.trustLevel ?? 1}`}
+                  />
+                  <Info Icon={Phone} label={selected.user?.phone ?? "—"} />
+                  <Info Icon={MapPin} label={selected.user?.city ?? "—"} />
+                  <Info
+                    Icon={Building2}
+                    label={detail?.user?.occupation ?? "—"}
+                    sub={
+                      detail?.user?.income
+                        ? `Penghasilan ${formatIDR(detail.user.income)}`
+                        : undefined
+                    }
+                  />
                 </div>
+              </Card>
+
+              <Card>
+                <CardTitle>Risk Score</CardTitle>
+                <div className="mt-4 flex items-center gap-5">
+                  <RiskCircle
+                    score={selected.app.riskScore ?? 0}
+                    grade={selected.app.riskGrade ?? "C"}
+                  />
+                  <div className="flex-1 space-y-2">
+                    <ScoreRow label="Penghasilan (25%)" pct={detail?.risk?.income ?? 0} />
+                    <ScoreRow label="Pekerjaan (20%)" pct={detail?.risk?.occupation ?? 0} />
+                    <ScoreRow label="Kategori (20%)" pct={detail?.risk?.category ?? 0} />
+                    <ScoreRow label="DP (15%)" pct={detail?.risk?.dp ?? 0} />
+                    <ScoreRow label="Lokasi (10%)" pct={detail?.risk?.location ?? 0} />
+                    <ScoreRow label="Device (10%)" pct={detail?.risk?.deviceTrust ?? 0} />
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            <Card>
+              <CardTitle>Dokumen Verifikasi</CardTitle>
+              <div className="mt-4 grid sm:grid-cols-4 gap-3">
+                {["KTP", "Selfie", "Slip Gaji", "Rekening Koran"].map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setPreviewDoc(d)}
+                    className="rounded-2xl border border-border p-4 flex flex-col items-center justify-center gap-2 hover:bg-slate-50"
+                  >
+                    <div className="h-12 w-12 rounded-2xl bg-primary-50 text-primary grid place-items-center">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <p className="text-sm font-semibold text-ink text-center">
+                      {d}
+                    </p>
+                    <p className="text-xs text-emerald font-semibold flex items-center gap-1">
+                      <ShieldCheck className="h-3.5 w-3.5" /> Verified
+                    </p>
+                  </button>
+                ))}
               </div>
             </Card>
-          </div>
 
-          <Card>
-            <CardTitle>Dokumen Verifikasi</CardTitle>
-            <div className="mt-4 grid sm:grid-cols-4 gap-3">
-              {["KTP", "Selfie", "Slip Gaji", "Rekening Koran"].map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setPreviewDoc(d)}
-                  className="rounded-2xl border border-border p-4 flex flex-col items-center justify-center gap-2 hover:bg-slate-50"
-                >
-                  <div className="h-12 w-12 rounded-2xl bg-primary-50 text-primary grid place-items-center">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <p className="text-sm font-semibold text-ink text-center">
-                    {d}
-                  </p>
-                  <p className="text-xs text-emerald font-semibold flex items-center gap-1">
-                    <ShieldCheck className="h-3.5 w-3.5" /> Verified
-                  </p>
-                </button>
-              ))}
+            <div className="flex gap-3 sticky bottom-4">
+              <Button
+                variant="danger"
+                className="flex-1"
+                disabled={
+                  selected.app.status === "approved" ||
+                  selected.app.status === "rejected"
+                }
+                onClick={() => setAction("reject")}
+              >
+                <X className="h-4 w-4" /> Reject
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                disabled={
+                  selected.app.status === "approved" ||
+                  selected.app.status === "rejected"
+                }
+                onClick={() => setAction("hold")}
+              >
+                Tahan untuk Supervisor
+              </Button>
+              <Button
+                variant="success"
+                className="flex-1"
+                disabled={
+                  selected.app.status === "approved" ||
+                  selected.app.status === "rejected"
+                }
+                onClick={() => setAction("approve")}
+              >
+                <Check className="h-4 w-4" /> Approve
+              </Button>
             </div>
-          </Card>
-
-          <div className="flex gap-3 sticky bottom-4">
-            <Button
-              variant="danger"
-              className="flex-1"
-              onClick={() => setAction("reject")}
-              disabled={
-                selected.status === "approved" ||
-                selected.status === "rejected"
-              }
-            >
-              <X className="h-4 w-4" /> Reject
-            </Button>
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={() => setAction("hold")}
-              disabled={
-                selected.status === "approved" ||
-                selected.status === "rejected"
-              }
-            >
-              Tahan untuk Supervisor
-            </Button>
-            <Button
-              variant="success"
-              className="flex-1"
-              onClick={() => setAction("approve")}
-              disabled={
-                selected.status === "approved" ||
-                selected.status === "rejected"
-              }
-            >
-              <Check className="h-4 w-4" /> Approve
-            </Button>
           </div>
-        </div>
+        ) : null}
       </div>
 
-      {/* Confirm action modal */}
       <Modal
         open={action !== null}
         onClose={() => {
@@ -335,10 +351,10 @@ export default function ApprovalsPage() {
         }
         description={
           action === "approve"
-            ? `Pengajuan ${selected.id} akan disetujui dan masuk ke flow DP/checkout.`
+            ? `${selected?.app.id} akan disetujui dan masuk flow DP/checkout.`
             : action === "reject"
-              ? `Pengajuan ${selected.id} akan ditolak. Mohon isi alasan penolakan.`
-              : `Pengajuan ${selected.id} akan diteruskan ke supervisor.`
+              ? `${selected?.app.id} akan ditolak. Mohon isi alasan penolakan.`
+              : `${selected?.app.id} akan diteruskan ke supervisor.`
         }
       >
         {action === "reject" ? (
@@ -376,12 +392,11 @@ export default function ApprovalsPage() {
         </div>
       </Modal>
 
-      {/* Document preview modal */}
       <Modal
         open={previewDoc !== null}
         onClose={() => setPreviewDoc(null)}
         title={`Preview ${previewDoc}`}
-        description="Dokumen ter-encrypt AES, hanya admin approval yang dapat melihat."
+        description="Dokumen ter-encrypt, hanya admin approval yang dapat melihat."
         size="lg"
       >
         <div className="aspect-video bg-slate-100 rounded-2xl grid place-items-center">
@@ -392,27 +407,9 @@ export default function ApprovalsPage() {
             </p>
           </div>
         </div>
-        <div className="mt-4 flex justify-end gap-3">
-          <Button variant="secondary" onClick={() => setPreviewDoc(null)}>
-            Tutup
-          </Button>
-        </div>
       </Modal>
     </div>
   );
-}
-
-function StatusInlineBadge({ status }: { status: Application["status"] }) {
-  const map: Record<Application["status"], { tone: any; label: string }> = {
-    pending: { tone: "warning", label: "Pending" },
-    manual_review: { tone: "info", label: "Manual Review" },
-    approved: { tone: "success", label: "Approved" },
-    rejected: { tone: "danger", label: "Rejected" },
-    delivered: { tone: "success", label: "Delivered" },
-    active: { tone: "primary", label: "Active" },
-  };
-  const m = map[status];
-  return <Badge tone={m.tone}>{m.label}</Badge>;
 }
 
 function Mini({ label, value }: { label: string; value: string }) {

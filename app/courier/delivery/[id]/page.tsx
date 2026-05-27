@@ -1,8 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   Camera,
@@ -19,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { courierTasks } from "@/lib/mock-data-extra";
+import { courier } from "@/lib/client";
 import { formatDate, cn } from "@/lib/utils";
 
 export default function CourierDeliveryPage({
@@ -29,34 +28,58 @@ export default function CourierDeliveryPage({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const task = courierTasks.find((t) => t.id === params.id);
-  if (!task) return notFound();
+  const [task, setTask] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [photos, setPhotos] = useState<string[]>([]);
-  const [gps, setGps] = useState<string | null>(null);
+  const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
   const [scanned, setScanned] = useState(false);
   const [signed, setSigned] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  useEffect(() => {
+    courier.tasks().then((res) => {
+      setLoading(false);
+      if (res.ok) {
+        const t = res.data.items.find((x: any) => x.d.id === params.id);
+        if (t) setTask(t);
+      }
+    });
+  }, [params.id]);
+
+  if (loading) return <div className="skeleton h-96" />;
+  if (!task) {
+    return (
+      <Card>
+        <p className="text-center text-ink-muted">
+          Tugas tidak ditemukan atau bukan untuk Anda.
+        </p>
+      </Card>
+    );
+  }
+  const t = task.d;
+
   const photoLabels = ["User pegang barang", "Depan rumah", "Kurir + user"];
 
   const captureGps = () => {
     if (!navigator.geolocation) {
-      setGps("-6.1781, 106.6298");
-      toast.success("GPS captured", "-6.1781, 106.6298");
+      const fallback = { lat: -6.1781, lng: 106.6298 };
+      setGps(fallback);
+      toast.success("GPS captured", `${fallback.lat}, ${fallback.lng}`);
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const coord = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
-        setGps(coord);
-        toast.success("GPS captured", coord);
+        const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setGps(c);
+        toast.success("GPS captured", `${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`);
       },
       () => {
-        setGps("-6.1781, 106.6298");
-        toast.success("GPS captured", "-6.1781, 106.6298 (fallback)");
+        const fallback = { lat: -6.1781, lng: 106.6298 };
+        setGps(fallback);
+        toast.success("GPS captured", "Fallback location");
       }
     );
   };
@@ -65,9 +88,18 @@ export default function CourierDeliveryPage({
     photos.length === 3 && gps !== null && scanned && signed;
 
   const submit = async () => {
+    if (!gps) return;
     setSubmitted(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    toast.success("Pengiriman selesai", `Proof ${task.id} berhasil dikirim`);
+    const res = await courier.submitProof(t.id, {
+      photos,
+      gpsLat: gps.lat,
+      gpsLng: gps.lng,
+      signatureDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      qrVerified: true,
+    });
+    setSubmitted(false);
+    if (!res.ok) return toast.danger("Gagal", res.error);
+    toast.success("Pengiriman selesai", `Proof ${t.id} terkirim`);
     router.push("/courier");
   };
 
@@ -80,31 +112,30 @@ export default function CourierDeliveryPage({
         <ArrowLeft className="h-4 w-4" /> Kembali
       </Link>
 
-      {/* Customer card */}
       <Card>
-        <p className="text-xs text-ink-muted">Pengiriman {task.id}</p>
+        <p className="text-xs text-ink-muted">Pengiriman {t.id}</p>
         <p className="text-cardtitle font-bold text-ink mt-1">
-          {task.customer}
+          {t.customerName}
         </p>
-        <p className="text-sm text-ink-muted mt-0.5">{task.product}</p>
+        <p className="text-sm text-ink-muted mt-0.5">{task.product?.title}</p>
         <div className="mt-3 space-y-2 text-sm">
           <p className="flex items-start gap-2">
             <MapPin className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-            <span className="text-ink">{task.address}</span>
+            <span className="text-ink">{t.address}</span>
           </p>
           <p className="text-xs text-ink-muted">
-            Jadwal: {formatDate(task.scheduled)}
+            Jadwal: {formatDate(new Date(t.scheduledAt))}
           </p>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <a
-            href={`tel:${task.phone.replace(/\s/g, "")}`}
+            href={`tel:${(t.customerPhone ?? "").replace(/\s/g, "")}`}
             className="btn-secondary h-11 text-sm"
           >
             <Phone className="h-4 w-4" /> Telepon
           </a>
           <a
-            href={`https://maps.google.com/?q=${encodeURIComponent(task.address)}`}
+            href={`https://maps.google.com/?q=${encodeURIComponent(t.address)}`}
             target="_blank"
             rel="noreferrer"
             className="btn-secondary h-11 text-sm"
@@ -114,7 +145,6 @@ export default function CourierDeliveryPage({
         </div>
       </Card>
 
-      {/* Step 1: Photos */}
       <Card>
         <div className="flex items-center justify-between">
           <CardTitle>Foto Bukti</CardTitle>
@@ -133,7 +163,7 @@ export default function CourierDeliveryPage({
                 key={lbl}
                 onClick={() => {
                   if (filled) return;
-                  setPhotos((s) => [...s, `photo-${i}`]);
+                  setPhotos((s) => [...s, `photo-${i}-${Date.now()}`]);
                   toast.success("Foto tersimpan", lbl);
                 }}
                 disabled={filled}
@@ -149,9 +179,7 @@ export default function CourierDeliveryPage({
                 ) : (
                   <div className="text-center">
                     <Camera className="h-6 w-6 text-ink-muted mx-auto" />
-                    <p className="text-[10px] text-ink-muted mt-1 px-2">
-                      {lbl}
-                    </p>
+                    <p className="text-[10px] text-ink-muted mt-1 px-2">{lbl}</p>
                   </div>
                 )}
               </button>
@@ -160,7 +188,6 @@ export default function CourierDeliveryPage({
         </div>
       </Card>
 
-      {/* Step 2: GPS */}
       <Card>
         <div className="flex items-center justify-between">
           <CardTitle>GPS Lokasi</CardTitle>
@@ -169,12 +196,10 @@ export default function CourierDeliveryPage({
           </Badge>
         </div>
         {gps ? (
-          <p className="mt-2 font-mono text-sm">{gps}</p>
-        ) : (
-          <p className="text-xs text-ink-muted mt-1">
-            Pastikan Anda berada di lokasi pengiriman.
+          <p className="mt-2 font-mono text-sm">
+            {gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}
           </p>
-        )}
+        ) : null}
         <Button
           variant="secondary"
           block
@@ -187,7 +212,6 @@ export default function CourierDeliveryPage({
         </Button>
       </Card>
 
-      {/* Step 3: QR */}
       <Card>
         <div className="flex items-center justify-between">
           <CardTitle>Verifikasi User (QR)</CardTitle>
@@ -195,9 +219,6 @@ export default function CourierDeliveryPage({
             {scanned ? "Verified" : "Pending"}
           </Badge>
         </div>
-        <p className="text-xs text-ink-muted mt-1">
-          Minta user scan QR di aplikasi mereka.
-        </p>
         <Button
           variant="secondary"
           block
@@ -210,7 +231,6 @@ export default function CourierDeliveryPage({
         </Button>
       </Card>
 
-      {/* Step 4: Signature */}
       <Card>
         <div className="flex items-center justify-between">
           <CardTitle>Tanda Tangan Digital</CardTitle>
@@ -218,9 +238,6 @@ export default function CourierDeliveryPage({
             {signed ? "Signed" : "Pending"}
           </Badge>
         </div>
-        <p className="text-xs text-ink-muted mt-1">
-          Mintakan tanda tangan user di kotak di bawah.
-        </p>
         <Button
           variant="secondary"
           block
@@ -247,7 +264,6 @@ export default function CourierDeliveryPage({
         open={scanOpen}
         onClose={() => setScanOpen(false)}
         title="Scan QR User"
-        description="Arahkan kamera ke QR code di aplikasi user."
       >
         <div className="aspect-square bg-slate-900 rounded-2xl grid place-items-center relative overflow-hidden">
           <div className="h-48 w-48 border-4 border-emerald rounded-2xl" />
@@ -259,7 +275,7 @@ export default function CourierDeliveryPage({
           onClick={() => {
             setScanned(true);
             setScanOpen(false);
-            toast.success("QR Verified", "User verified");
+            toast.success("QR Verified");
           }}
         >
           Simulasikan Scan Berhasil
@@ -270,7 +286,6 @@ export default function CourierDeliveryPage({
         open={signOpen}
         onClose={() => setSignOpen(false)}
         title="Tanda Tangan Digital"
-        description="Tap area di bawah untuk simulasi."
       >
         <div
           onClick={() => {
@@ -283,7 +298,7 @@ export default function CourierDeliveryPage({
           <div className="text-center">
             <PenLine className="h-8 w-8 text-ink-muted mx-auto" />
             <p className="text-sm text-ink-muted mt-2">
-              Tap area ini untuk simulasi tanda tangan
+              Tap untuk simulasi tanda tangan
             </p>
           </div>
         </div>

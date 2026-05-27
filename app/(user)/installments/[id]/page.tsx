@@ -1,5 +1,6 @@
+"use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   CalendarClock,
@@ -7,25 +8,54 @@ import {
   Circle,
   CreditCard,
   PackageCheck,
-  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/components/ui/toast";
+import { customer } from "@/lib/client";
 import { formatIDR, formatDate } from "@/lib/utils";
-import { myInstallments } from "@/lib/mock-data";
 
 export default function InstallmentDetailPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const ins = myInstallments.find((i) => i.id === params.id);
-  if (!ins) return notFound();
+  const toast = useToast();
+  const [data, setData] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const progress = Math.round((ins.paid / ins.total) * 100);
-  const months = Array.from({ length: ins.tenor }, (_, i) => i + 1);
+  const refresh = () => {
+    customer.application(params.id).then((res) => {
+      setLoading(false);
+      if (res.ok) setData(res.data);
+    });
+  };
+
+  useEffect(refresh, [params.id]);
+
+  if (loading) return <div className="skeleton h-96" />;
+  if (!data) {
+    return (
+      <Card>
+        <p className="text-center text-ink-muted">Tidak ditemukan</p>
+      </Card>
+    );
+  }
+
+  const { application, product, installments, deliveries } = data;
+  const paid = installments
+    .filter((i: any) => i.status === "paid")
+    .reduce((s: number, i: any) => s + i.amount, 0);
+  const totalAmt = installments.reduce(
+    (s: number, i: any) => s + i.amount,
+    0
+  );
+  const progress = totalAmt > 0 ? Math.round((paid / totalAmt) * 100) : 0;
+  const nextIns = installments.find((i: any) => i.status !== "paid");
+  const completed = installments.length > 0 && progress === 100;
+  const delivered = deliveries.find((d: any) => d.status === "delivered");
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -39,22 +69,20 @@ export default function InstallmentDetailPage({
       <Card>
         <div className="flex items-start gap-4">
           <img
-            src={ins.product.image}
-            alt={ins.product.title}
+            src={product?.imageUrl}
+            alt={product?.title}
             className="h-20 w-20 rounded-2xl object-cover bg-slate-100"
           />
           <div className="flex-1 min-w-0">
             <Badge
-              tone={ins.status === "completed" ? "success" : "primary"}
+              tone={completed ? "success" : "primary"}
               className="mb-2"
             >
-              {ins.status === "completed" ? "Lunas" : "Aktif"}
+              {completed ? "Lunas" : "Aktif"}
             </Badge>
-            <p className="text-section font-bold text-ink">
-              {ins.product.title}
-            </p>
+            <p className="text-section font-bold text-ink">{product?.title}</p>
             <p className="text-sm text-ink-muted mt-0.5">
-              ID: {ins.id} · Tenor {ins.tenor} bulan
+              ID: {application.id} · Tenor {application.tenor} bulan
             </p>
           </div>
         </div>
@@ -62,31 +90,33 @@ export default function InstallmentDetailPage({
         <div className="mt-6">
           <Progress
             value={progress}
-            tone={ins.status === "completed" ? "success" : "primary"}
+            tone={completed ? "success" : "primary"}
           />
           <div className="mt-2 flex items-center justify-between text-sm">
             <span className="text-ink-muted">
-              {formatIDR(ins.paid)} / {formatIDR(ins.total)}
+              {formatIDR(paid)} / {formatIDR(totalAmt)}
             </span>
             <span className="font-semibold text-ink">{progress}%</span>
           </div>
         </div>
 
-        {ins.status !== "completed" ? (
-          <div className="mt-6 rounded-2xl bg-primary-50 p-5 flex items-center justify-between">
+        {nextIns ? (
+          <div className="mt-6 rounded-2xl bg-primary-50 p-5 flex items-center justify-between flex-wrap gap-3">
             <div>
               <p className="text-sm text-primary font-medium">
-                Cicilan Berikutnya
+                Cicilan Berikutnya (#{nextIns.sequence})
               </p>
               <p className="text-xl font-bold text-ink mt-1">
-                {formatIDR(ins.monthly)}
+                {formatIDR(nextIns.amount)}
               </p>
               <p className="text-xs text-ink-muted mt-0.5 flex items-center gap-1.5">
                 <CalendarClock className="h-3.5 w-3.5" />
-                Jatuh tempo {formatDate(ins.nextDueDate)}
+                Jatuh tempo {formatDate(new Date(nextIns.dueDate))}
               </p>
             </div>
-            <Link href="/payments">
+            <Link
+              href={`/payments?applicationId=${application.id}&installmentId=${nextIns.id}`}
+            >
               <Button>
                 <CreditCard className="h-4 w-4" /> Bayar Sekarang
               </Button>
@@ -98,49 +128,58 @@ export default function InstallmentDetailPage({
       <Card>
         <CardTitle>Jadwal Pembayaran</CardTitle>
         <ul className="mt-4 space-y-2.5">
-          {months.map((m) => {
-            const paid = m <= ins.paidMonths;
-            return (
-              <li
-                key={m}
-                className="flex items-center justify-between p-3 rounded-2xl border border-border"
-              >
-                <div className="flex items-center gap-3">
-                  {paid ? (
-                    <CheckCircle2 className="h-5 w-5 text-emerald" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-ink-muted" />
-                  )}
-                  <div>
-                    <p className="font-semibold text-ink">Cicilan ke-{m}</p>
-                    <p className="text-xs text-ink-muted">
-                      {paid ? "Sudah dibayar" : "Belum jatuh tempo"}
-                    </p>
-                  </div>
+          {installments.map((m: any) => (
+            <li
+              key={m.id}
+              className="flex items-center justify-between p-3 rounded-2xl border border-border"
+            >
+              <div className="flex items-center gap-3">
+                {m.status === "paid" ? (
+                  <CheckCircle2 className="h-5 w-5 text-emerald" />
+                ) : m.status === "overdue" ? (
+                  <Circle className="h-5 w-5 text-danger" />
+                ) : (
+                  <Circle className="h-5 w-5 text-ink-muted" />
+                )}
+                <div>
+                  <p className="font-semibold text-ink">
+                    Cicilan ke-{m.sequence}
+                  </p>
+                  <p className="text-xs text-ink-muted">
+                    {m.status === "paid"
+                      ? `Dibayar ${formatDate(new Date(m.paidAt))}`
+                      : `Jatuh tempo ${formatDate(new Date(m.dueDate))}`}
+                    {m.status === "overdue"
+                      ? ` · OVERDUE${m.penaltyAmount ? " · penalti " + formatIDR(m.penaltyAmount) : ""}`
+                      : ""}
+                  </p>
                 </div>
-                <span className="font-semibold text-ink">
-                  {formatIDR(ins.monthly)}
-                </span>
-              </li>
-            );
-          })}
+              </div>
+              <span className="font-semibold text-ink">
+                {formatIDR(m.amount)}
+              </span>
+            </li>
+          ))}
         </ul>
       </Card>
 
-      <Card>
-        <CardTitle>Pengiriman</CardTitle>
-        <div className="mt-4 flex items-center gap-4 p-4 rounded-2xl bg-emerald/5 border border-emerald/20">
-          <div className="h-11 w-11 rounded-2xl bg-emerald/10 grid place-items-center text-emerald">
-            <PackageCheck className="h-5 w-5" />
+      {delivered ? (
+        <Card>
+          <CardTitle>Pengiriman</CardTitle>
+          <div className="mt-4 flex items-center gap-4 p-4 rounded-2xl bg-emerald/5 border border-emerald/20">
+            <div className="h-11 w-11 rounded-2xl bg-emerald/10 grid place-items-center text-emerald">
+              <PackageCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-ink">Verified Delivered</p>
+              <p className="text-sm text-ink-muted">
+                Diterima {formatDate(new Date(delivered.completedAt))} · Foto, GPS &
+                tanda tangan terverifikasi
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="font-semibold text-ink">Verified Delivered</p>
-            <p className="text-sm text-ink-muted">
-              Diterima 8 Mar 2026 · Foto, GPS & tanda tangan terverifikasi
-            </p>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      ) : null}
     </div>
   );
 }

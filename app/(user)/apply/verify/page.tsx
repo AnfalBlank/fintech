@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,13 +10,14 @@ import {
   FileText,
   ShieldCheck,
   Upload,
-  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { Stepper } from "@/components/user/stepper";
 import { useToast } from "@/components/ui/toast";
+import { customer } from "@/lib/client";
+import { getApply, setApply } from "@/lib/apply-store";
 import { cn } from "@/lib/utils";
 
 type DocStatus = "pending" | "uploading" | "done";
@@ -37,13 +38,31 @@ export default function VerifyPage() {
     signature: false,
     data: false,
   });
+  const [details, setDetails] = useState({
+    name: "",
+    ktpNumber: "",
+    address: "",
+    occupation: "",
+    income: "",
+    city: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+  });
+
+  useEffect(() => {
+    const a = getApply();
+    if (!a.product || !a.tenor) {
+      router.push("/apply");
+      return;
+    }
+  }, [router]);
 
   const upload = (key: string) => {
     setDocs((d) => ({ ...d, [key]: "uploading" }));
     setTimeout(() => {
       setDocs((d) => ({ ...d, [key]: "done" }));
-      toast.success("Dokumen terverifikasi", `${key.toUpperCase()} OK`);
-    }, 900);
+      toast.success("Dokumen tersimpan", `${key.toUpperCase()} OK`);
+    }, 700);
   };
 
   const allMandatoryDone = docs.ktp === "done" && docs.selfie === "done";
@@ -52,11 +71,33 @@ export default function VerifyPage() {
 
   const submit = async () => {
     if (!allConsents) {
-      toast.warning("Persetujuan diperlukan", "Centang semua persetujuan.");
-      return;
+      return toast.warning("Persetujuan diperlukan", "Centang semua persetujuan.");
+    }
+    const a = getApply();
+    if (!a.productUrl || !a.tenor) {
+      return toast.danger("Data sesi hilang", "Mulai ulang dari awal");
     }
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 1200));
+    const res = await customer.apply({
+      productUrl: a.productUrl,
+      tenor: a.tenor,
+      occupation: details.occupation || undefined,
+      income: details.income ? Number(details.income) : undefined,
+      city: details.city || undefined,
+      address: details.address || undefined,
+      ktpNumber: details.ktpNumber || undefined,
+      emergencyContactName: details.emergencyContactName || undefined,
+      emergencyContactPhone: details.emergencyContactPhone || undefined,
+    });
+    setSubmitting(false);
+    if (!res.ok) return toast.danger("Pengajuan gagal", res.error);
+    setApply({
+      applicationId: res.data.applicationId,
+      status: res.data.status,
+      riskGrade: res.data.risk?.grade,
+      riskScore: res.data.risk?.total,
+    });
+    toast.success("Pengajuan terkirim", `ID ${res.data.applicationId}`);
     router.push("/apply/approval");
   };
 
@@ -67,7 +108,7 @@ export default function VerifyPage() {
         <h1 className="text-page font-bold text-ink">Verifikasi Data</h1>
         <p className="text-ink-muted mt-1.5">
           Untuk memverifikasi identitas dan kemampuan bayar Anda. Data dienkripsi
-          AES & hanya digunakan untuk proses approval.
+          dan hanya digunakan untuk approval.
         </p>
       </div>
 
@@ -99,7 +140,7 @@ export default function VerifyPage() {
           <Card>
             <CardTitle>Dokumen Pendukung (Opsional)</CardTitle>
             <p className="text-sm text-ink-muted mt-1">
-              Dokumen pendukung mempercepat approval & menaikkan limit Anda.
+              Mempercepat approval & menaikkan limit Anda.
             </p>
             <div className="mt-5 grid sm:grid-cols-2 gap-3">
               <UploadCard
@@ -140,20 +181,51 @@ export default function VerifyPage() {
           <Card>
             <CardTitle>Data Pribadi & Pekerjaan</CardTitle>
             <div className="mt-5 grid sm:grid-cols-2 gap-4">
-              <Field label="Nama Lengkap" defaultValue="Rafi Aditya" />
-              <Field label="No. KTP" defaultValue="3174021509980003" />
+              <Field
+                label="No. KTP"
+                value={details.ktpNumber}
+                onChange={(v) => setDetails({ ...details, ktpNumber: v })}
+              />
+              <Field
+                label="Kota"
+                value={details.city}
+                onChange={(v) => setDetails({ ...details, city: v })}
+              />
               <Field
                 label="Alamat Domisili"
                 className="sm:col-span-2"
-                defaultValue="Jl. Kemang Selatan No. 12, Jakarta Selatan"
+                value={details.address}
+                onChange={(v) => setDetails({ ...details, address: v })}
               />
-              <Field label="Pekerjaan" defaultValue="Karyawan Tetap" />
-              <Field label="Penghasilan / bln" defaultValue="Rp 12.000.000" />
+              <Field
+                label="Pekerjaan"
+                value={details.occupation}
+                onChange={(v) => setDetails({ ...details, occupation: v })}
+              />
+              <Field
+                label="Penghasilan / bln (Rp)"
+                value={details.income}
+                onChange={(v) =>
+                  setDetails({
+                    ...details,
+                    income: v.replace(/\D/g, ""),
+                  })
+                }
+              />
               <Field
                 label="Kontak Darurat (Nama)"
-                defaultValue="Anita Suryani"
+                value={details.emergencyContactName}
+                onChange={(v) =>
+                  setDetails({ ...details, emergencyContactName: v })
+                }
               />
-              <Field label="Kontak Darurat (Telp)" defaultValue="+62 813-..." />
+              <Field
+                label="Kontak Darurat (Telp)"
+                value={details.emergencyContactPhone}
+                onChange={(v) =>
+                  setDetails({ ...details, emergencyContactPhone: v })
+                }
+              />
             </div>
           </Card>
 
@@ -167,8 +239,7 @@ export default function VerifyPage() {
                   Data Anda aman & terenkripsi
                 </p>
                 <p className="text-sm text-ink-muted mt-1">
-                  Hanya tim approval yang dapat mengakses dokumen Anda. Audit
-                  log disimpan untuk setiap akses.
+                  Hanya tim approval yang dapat akses dokumen Anda.
                 </p>
               </div>
             </div>
@@ -177,51 +248,29 @@ export default function VerifyPage() {
           <Card>
             <CardTitle>Persetujuan</CardTitle>
             <div className="mt-4 space-y-3">
-              <label className="flex items-start gap-3 cursor-pointer text-sm">
-                <input
-                  type="checkbox"
-                  checked={consents.agreement}
-                  onChange={(e) =>
-                    setConsents({ ...consents, agreement: e.target.checked })
-                  }
-                  className="h-4 w-4 mt-0.5 rounded border-border accent-primary"
-                />
-                <span className="text-ink">
-                  Saya menyetujui{" "}
-                  <a href="#" className="text-primary font-semibold">
-                    Perjanjian Cicilan Digital
-                  </a>{" "}
-                  Manggala.
-                </span>
-              </label>
-              <label className="flex items-start gap-3 cursor-pointer text-sm">
-                <input
-                  type="checkbox"
-                  checked={consents.signature}
-                  onChange={(e) =>
-                    setConsents({ ...consents, signature: e.target.checked })
-                  }
-                  className="h-4 w-4 mt-0.5 rounded border-border accent-primary"
-                />
-                <span className="text-ink">
-                  Saya menyetujui penggunaan tanda tangan digital sebagai
-                  pengganti tanda tangan basah.
-                </span>
-              </label>
-              <label className="flex items-start gap-3 cursor-pointer text-sm">
-                <input
-                  type="checkbox"
-                  checked={consents.data}
-                  onChange={(e) =>
-                    setConsents({ ...consents, data: e.target.checked })
-                  }
-                  className="h-4 w-4 mt-0.5 rounded border-border accent-primary"
-                />
-                <span className="text-ink">
-                  Saya setuju Manggala memproses & memverifikasi data saya untuk
-                  approval cicilan.
-                </span>
-              </label>
+              <Consent
+                checked={consents.agreement}
+                onChange={(v) => setConsents({ ...consents, agreement: v })}
+                label={
+                  <>
+                    Saya menyetujui{" "}
+                    <a href="#" className="text-primary font-semibold">
+                      Perjanjian Cicilan Digital
+                    </a>{" "}
+                    Manggala.
+                  </>
+                }
+              />
+              <Consent
+                checked={consents.signature}
+                onChange={(v) => setConsents({ ...consents, signature: v })}
+                label="Saya menyetujui penggunaan tanda tangan digital."
+              />
+              <Consent
+                checked={consents.data}
+                onChange={(v) => setConsents({ ...consents, data: v })}
+                label="Saya setuju Manggala memproses & memverifikasi data saya."
+              />
             </div>
           </Card>
 
@@ -247,6 +296,28 @@ export default function VerifyPage() {
         </>
       )}
     </div>
+  );
+}
+
+function Consent({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: React.ReactNode;
+}) {
+  return (
+    <label className="flex items-start gap-3 cursor-pointer text-sm">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 mt-0.5 rounded border-border accent-primary"
+      />
+      <span className="text-ink">{label}</span>
+    </label>
   );
 }
 
@@ -283,18 +354,14 @@ function UploadCard({
               : "bg-primary-50 text-primary"
           )}
         >
-          {status === "done" ? (
-            <Check className="h-5 w-5" />
-          ) : (
-            <Icon className="h-5 w-5" />
-          )}
+          {status === "done" ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
         </div>
         <div className="flex-1">
           <p className="font-semibold text-ink">{title}</p>
           <p className="text-xs text-ink-muted mt-0.5">{desc}</p>
           <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold">
             {status === "done" ? (
-              <span className="text-emerald">✓ Terverifikasi</span>
+              <span className="text-emerald">✓ Tersimpan</span>
             ) : status === "uploading" ? (
               <span className="text-primary">Mengunggah…</span>
             ) : (
@@ -311,17 +378,23 @@ function UploadCard({
 
 function Field({
   label,
-  defaultValue,
+  value,
+  onChange,
   className,
 }: {
   label: string;
-  defaultValue?: string;
+  value: string;
+  onChange: (v: string) => void;
   className?: string;
 }) {
   return (
     <div className={className}>
       <Label>{label}</Label>
-      <Input defaultValue={defaultValue} placeholder={label} />
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={label}
+      />
     </div>
   );
 }

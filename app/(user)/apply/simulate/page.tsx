@@ -1,10 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
-  CalendarClock,
   Check,
   Info,
   Percent,
@@ -13,23 +12,38 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatIDR } from "@/lib/utils";
-import { sampleProduct } from "@/lib/mock-data";
-import { simulate, type Tenor } from "@/lib/financing";
-import { cn } from "@/lib/utils";
 import { Stepper } from "@/components/user/stepper";
+import { formatIDR, cn } from "@/lib/utils";
+import { simulate, type Tenor } from "@/lib/financing";
+import { getApply, setApply } from "@/lib/apply-store";
 
 const tenorOptions: Tenor[] = [3, 6, 12];
 
 export default function SimulatePage() {
   const router = useRouter();
   const [tenor, setTenor] = useState<Tenor>(3);
-  const [includeDP, setIncludeDP] = useState(true);
+  const [product, setProduct] = useState<any | null>(null);
 
-  const sim = simulate(sampleProduct.price, tenor, {
-    newUser: false,
-    highRisk: false,
+  useEffect(() => {
+    const a = getApply();
+    if (!a.product) {
+      router.push("/apply");
+      return;
+    }
+    setProduct(a.product);
+    if (a.tenor) setTenor(a.tenor);
+  }, [router]);
+
+  if (!product) return null;
+
+  const sim = simulate(product.price, tenor, {
+    highRisk: product.highRisk,
   });
+
+  const onContinue = () => {
+    setApply({ tenor });
+    router.push("/apply/verify");
+  };
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -42,36 +56,32 @@ export default function SimulatePage() {
         </p>
       </div>
 
-      {/* Product summary */}
       <Card className="flex items-center gap-4">
         <img
-          src={sampleProduct.image}
-          alt={sampleProduct.title}
+          src={product.imageUrl}
+          alt={product.title}
           className="h-16 w-16 rounded-2xl object-cover bg-slate-100"
         />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-ink line-clamp-1">
-            {sampleProduct.title}
-          </p>
+          <p className="font-semibold text-ink line-clamp-1">{product.title}</p>
           <p className="text-sm text-ink-muted">
-            {sampleProduct.marketplace} · {sampleProduct.category}
+            {product.marketplace} · {product.category}
           </p>
         </div>
-        <p className="font-bold text-ink">{formatIDR(sampleProduct.price)}</p>
+        <p className="font-bold text-ink">{formatIDR(product.price)}</p>
       </Card>
 
-      {/* Tenor select */}
       <Card>
         <div className="flex items-center justify-between mb-3">
           <CardTitle>Pilih Tenor Cicilan</CardTitle>
           <Badge tone="info">
-            <Percent className="h-3.5 w-3.5" /> {Math.round(sim.marginPct * 100)}%
-            margin
+            <Percent className="h-3.5 w-3.5" />
+            {Math.round(sim.marginPct * 100)}% margin
           </Badge>
         </div>
         <div className="grid grid-cols-3 gap-3">
           {tenorOptions.map((t) => {
-            const s = simulate(sampleProduct.price, t);
+            const s = simulate(product.price, t, { highRisk: product.highRisk });
             const active = t === tenor;
             return (
               <button
@@ -107,7 +117,6 @@ export default function SimulatePage() {
         </div>
       </Card>
 
-      {/* DP toggle */}
       {sim.dpRequired ? (
         <Card>
           <div className="flex items-start gap-4">
@@ -119,8 +128,8 @@ export default function SimulatePage() {
                 DP {Math.round(sim.dpPct * 100)}% diperlukan
               </p>
               <p className="text-sm text-ink-muted mt-1">
-                Karena harga produk di atas Rp 3 juta, sistem mengharuskan
-                pembayaran DP minimum {formatIDR(sim.dpAmount)}.
+                Karena harga produk di atas Rp 3 juta atau kategori high risk,
+                sistem mengharuskan pembayaran DP minimum {formatIDR(sim.dpAmount)}.
               </p>
             </div>
           </div>
@@ -141,7 +150,6 @@ export default function SimulatePage() {
         </Card>
       )}
 
-      {/* Summary */}
       <Card>
         <CardTitle>Ringkasan Pembiayaan</CardTitle>
         <div className="mt-4 divide-y divide-border">
@@ -150,11 +158,7 @@ export default function SimulatePage() {
             label={`Margin (${Math.round(sim.marginPct * 100)}%)`}
             value={formatIDR(sim.total - sim.productPrice)}
           />
-          <Row
-            label="Total Pembiayaan"
-            value={formatIDR(sim.total)}
-            bold
-          />
+          <Row label="Total Pembiayaan" value={formatIDR(sim.total)} bold />
           {sim.dpRequired ? (
             <Row
               label={`DP (${Math.round(sim.dpPct * 100)}%)`}
@@ -162,10 +166,7 @@ export default function SimulatePage() {
               tone="warning"
             />
           ) : null}
-          <Row
-            label="Sisa Dicicil"
-            value={formatIDR(sim.financed)}
-          />
+          <Row label="Sisa Dicicil" value={formatIDR(sim.financed)} />
           <Row
             label={`Cicilan ${sim.tenor} bulan`}
             value={formatIDR(sim.monthly) + " / bln"}
@@ -189,11 +190,9 @@ export default function SimulatePage() {
             Kembali
           </Button>
         </Link>
-        <Link href="/apply/verify" className="flex-1">
-          <Button block>
-            Lanjut Verifikasi <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Link>
+        <Button block className="flex-1" onClick={onContinue}>
+          Lanjut Verifikasi <ArrowRight className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
@@ -226,5 +225,3 @@ function Row({
     </div>
   );
 }
-
-
