@@ -136,6 +136,14 @@ export const admin = {
 // ============= Courier =============
 export const courier = {
   tasks: () => api.get<{ items: any[] }>("/api/courier/tasks"),
+  history: () => api.get<{ items: any[] }>("/api/courier/history"),
+  stats: () =>
+    api.get<{
+      total: number;
+      delivered: number;
+      pending: number;
+      onTimePct: number;
+    }>("/api/courier/stats"),
   submitProof: (
     deliveryId: string,
     body: {

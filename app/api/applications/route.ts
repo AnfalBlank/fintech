@@ -27,6 +27,7 @@ const Body = z.object({
   ktpNumber: z.string().optional(),
   emergencyContactName: z.string().optional(),
   emergencyContactPhone: z.string().optional(),
+  consentSignature: z.boolean().optional(),
 });
 
 // POST /api/applications — Create new application (PRD §11 Step 2-7)
@@ -64,6 +65,8 @@ export const POST = await requireAuth(["customer"] as const)(async (
     userPatch.emergencyContactName = data.emergencyContactName;
   if (data.emergencyContactPhone)
     userPatch.emergencyContactPhone = data.emergencyContactPhone;
+  if (data.consentSignature !== undefined)
+    userPatch.consentSignature = data.consentSignature;
   if (Object.keys(userPatch).length) {
     await db
       .update(schema.users)

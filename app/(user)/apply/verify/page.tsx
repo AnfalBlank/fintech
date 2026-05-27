@@ -88,6 +88,7 @@ export default function VerifyPage() {
       ktpNumber: details.ktpNumber || undefined,
       emergencyContactName: details.emergencyContactName || undefined,
       emergencyContactPhone: details.emergencyContactPhone || undefined,
+      consentSignature: consents.signature,
     });
     setSubmitting(false);
     if (!res.ok) return toast.danger("Pengajuan gagal", res.error);

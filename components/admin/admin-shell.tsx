@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -50,6 +50,23 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     router.push("/login");
   };
 
+  const [user, setUser] = useState<{
+    name?: string;
+    role?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    auth.me().then((res) => {
+      if (res.ok) setUser(res.data.user);
+    });
+  }, []);
+
+  const initial = user?.name?.charAt(0)?.toUpperCase() ?? "?";
+  const firstName = user?.name?.split(" ")[0] ?? "—";
+  const roleLabel = (user?.role ?? "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
   return (
     <div className="min-h-screen bg-bg flex">
       {/* Sidebar */}
@@ -90,8 +107,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className="px-3 pb-4">
           <div className="rounded-2xl bg-white/5 p-4">
             <p className="text-xs text-white/60">Active session</p>
-            <p className="text-sm font-semibold mt-1">Andini Pratama</p>
-            <p className="text-xs text-white/50">Finance Admin</p>
+            <p className="text-sm font-semibold mt-1">{user?.name ?? "—"}</p>
+            <p className="text-xs text-white/50">{roleLabel}</p>
           </div>
         </div>
       </aside>
@@ -117,10 +134,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 className="h-10 px-2.5 rounded-2xl bg-white border border-border flex items-center gap-2.5 hover:bg-slate-50"
               >
                 <span className="h-7 w-7 rounded-xl bg-primary text-white grid place-items-center text-xs font-bold">
-                  A
+                  {initial}
                 </span>
                 <span className="text-sm font-semibold text-ink hidden sm:inline">
-                  Andini
+                  {firstName}
                 </span>
                 <ChevronDown className="h-4 w-4 text-ink-muted" />
               </button>
@@ -133,9 +150,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   <div className="absolute right-0 mt-2 w-56 z-50 card-base p-2 overflow-hidden shadow-float">
                     <div className="px-3 py-2.5 border-b border-border">
                       <p className="text-sm font-semibold text-ink">
-                        Andini Pratama
+                        {user?.name ?? "—"}
                       </p>
-                      <p className="text-xs text-ink-muted">Finance Admin</p>
+                      <p className="text-xs text-ink-muted">{roleLabel}</p>
                     </div>
                     <Link
                       href="/admin/users"

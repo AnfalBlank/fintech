@@ -1,25 +1,47 @@
 "use client";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, Phone, Truck, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
+import { auth, courier } from "@/lib/client";
 
 export default function CourierProfilePage() {
   const router = useRouter();
   const toast = useToast();
+  const [user, setUser] = useState<any | null>(null);
+  const [stats, setStats] = useState<{
+    total: number;
+    delivered: number;
+    pending: number;
+    onTimePct: number;
+  } | null>(null);
+
+  useEffect(() => {
+    Promise.all([auth.me(), courier.stats()]).then(([me, st]) => {
+      if (me.ok) setUser(me.data.user);
+      if (st.ok) setStats(st.data);
+    });
+  }, []);
+
+  const onLogout = async () => {
+    await auth.logout();
+    toast.success("Logout berhasil");
+    router.push("/login");
+  };
 
   return (
     <div className="space-y-4">
       <Card>
         <div className="flex items-center gap-4">
           <div className="h-14 w-14 rounded-2xl bg-primary text-white grid place-items-center text-xl font-bold">
-            A
+            {user?.name?.charAt(0) ?? "?"}
           </div>
           <div className="flex-1">
-            <p className="font-bold text-ink">Adi Saputra</p>
-            <p className="text-sm text-ink-muted">+62 813-1190-2233</p>
+            <p className="font-bold text-ink">{user?.name ?? "Loading…"}</p>
+            <p className="text-sm text-ink-muted">{user?.phone ?? "—"}</p>
             <Badge tone="primary" className="mt-1.5">
               <Truck className="h-3 w-3" /> Internal Courier
             </Badge>
@@ -28,11 +50,13 @@ export default function CourierProfilePage() {
       </Card>
 
       <Card>
-        <h3 className="font-semibold text-ink text-sm mb-3">Performa Bulan Ini</h3>
+        <h3 className="font-semibold text-ink text-sm mb-3">
+          Performa Pengiriman
+        </h3>
         <div className="grid grid-cols-3 gap-3 text-center">
-          <Stat label="Total" value="48" />
-          <Stat label="On-time" value="94%" />
-          <Stat label="Rating" value="4.9" />
+          <Stat label="Total" value={String(stats?.total ?? 0)} />
+          <Stat label="Selesai" value={String(stats?.delivered ?? 0)} />
+          <Stat label="On-time" value={`${stats?.onTimePct ?? 0}%`} />
         </div>
       </Card>
 
@@ -44,14 +68,7 @@ export default function CourierProfilePage() {
         </ul>
       </Card>
 
-      <Button
-        variant="secondary"
-        block
-        onClick={() => {
-          toast.success("Logout berhasil");
-          router.push("/login");
-        }}
-      >
+      <Button variant="secondary" block onClick={onLogout}>
         <LogOut className="h-4 w-4" /> Keluar
       </Button>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Home,
   Receipt,
@@ -34,12 +34,24 @@ export function UserAppShell({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [user, setUser] = useState<{
+    name?: string;
+    trustLevel?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    auth.me().then((res) => {
+      if (res.ok) setUser(res.data.user);
+    });
+  }, []);
 
   const onLogout = async () => {
     await auth.logout();
     toast.success("Berhasil keluar", "Anda telah logout dari akun");
     router.push("/login");
   };
+
+  const initial = user?.name?.charAt(0)?.toUpperCase() ?? "?";
 
   return (
     <div className="min-h-screen bg-bg pb-24 md:pb-0">
@@ -68,7 +80,7 @@ export function UserAppShell({ children }: { children: React.ReactNode }) {
                 className="h-10 px-1.5 rounded-2xl bg-white border border-border flex items-center gap-2 hover:bg-slate-50"
               >
                 <span className="h-7 w-7 rounded-xl bg-primary text-white grid place-items-center font-semibold text-sm">
-                  R
+                  {initial}
                 </span>
                 <ChevronDown className="h-4 w-4 text-ink-muted hidden sm:inline" />
               </button>
@@ -82,9 +94,11 @@ export function UserAppShell({ children }: { children: React.ReactNode }) {
                   <div className="absolute right-0 mt-2 w-56 z-50 card-base p-2 overflow-hidden shadow-float">
                     <div className="px-3 py-2.5 border-b border-border">
                       <p className="text-sm font-semibold text-ink">
-                        Rafi Aditya
+                        {user?.name ?? "—"}
                       </p>
-                      <p className="text-xs text-ink-muted">Trust Level 2</p>
+                      <p className="text-xs text-ink-muted">
+                        Trust Level {user?.trustLevel ?? 1}
+                      </p>
                     </div>
                     <Link
                       href="/profile"
