@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Circle,
   CreditCard,
+  FileDown,
   PackageCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -180,6 +181,70 @@ export default function InstallmentDetailPage({
           </div>
         </Card>
       ) : null}
+
+      <Card>
+        <CardTitle>Dokumen</CardTitle>
+        <p className="text-sm text-ink-muted mt-1">
+          Unduh perjanjian cicilan dan invoice/receipt setiap pembayaran.
+        </p>
+        <div className="mt-4 grid sm:grid-cols-2 gap-3">
+          <a
+            href={`/api/applications/${application.id}/agreement`}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-secondary h-12 text-sm"
+          >
+            <FileDown className="h-4 w-4" />
+            Perjanjian Cicilan PDF
+          </a>
+          <a
+            href={`/api/customer/statement`}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-secondary h-12 text-sm"
+          >
+            <FileDown className="h-4 w-4" />
+            Statement Bulanan PDF
+          </a>
+        </div>
+
+        {data.payments?.length > 0 ? (
+          <div className="mt-4">
+            <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">
+              Receipt Pembayaran
+            </p>
+            <ul className="space-y-1.5">
+              {data.payments
+                .filter((p: any) => p.status === "paid")
+                .map((p: any) => (
+                  <li
+                    key={p.id}
+                    className="flex items-center justify-between p-3 rounded-xl border border-border"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {p.type === "dp" ? "DP" : `Cicilan`} ·{" "}
+                        {formatIDR(p.amount)}
+                      </p>
+                      <p className="text-xs text-ink-muted font-mono">
+                        {p.referenceNo}
+                      </p>
+                    </div>
+                    <a
+                      href={`/api/payments/${p.id}/invoice`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-ghost h-9 px-3 text-sm"
+                    >
+                      <FileDown className="h-4 w-4" />
+                      PDF
+                    </a>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        ) : null}
+      </Card>
     </div>
   );
 }

@@ -89,6 +89,25 @@ export default function ProfilePage() {
 
       <Card className="p-0">
         <ul className="divide-y divide-border">
+          <li>
+            <a
+              href="/api/customer/statement"
+              target="_blank"
+              rel="noreferrer"
+              className="w-full flex items-center gap-4 p-5 hover:bg-slate-50 text-left"
+            >
+              <div className="h-10 w-10 rounded-2xl bg-primary-50 text-primary grid place-items-center">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-ink">Download Statement PDF</p>
+                <p className="text-xs text-ink-muted">
+                  Ringkasan cicilan + pembayaran 30 hari terakhir
+                </p>
+              </div>
+              <ChevronRight className="h-5 w-5 text-ink-muted" />
+            </a>
+          </li>
           <MenuItem
             Icon={User}
             title="Data Pribadi"

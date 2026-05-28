@@ -441,15 +441,27 @@ function PaymentsInner() {
             {formatIDR(target.amount)}
           </p>
         </div>
-        <Button
-          block
-          onClick={() => {
-            setSuccess(false);
-            router.push("/installments");
-          }}
-        >
-          Lihat Cicilan
-        </Button>
+        <div className="space-y-2">
+          {intent?.paymentId ? (
+            <a
+              href={`/api/payments/${intent.paymentId}/invoice`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-secondary block text-center h-11"
+            >
+              Download Receipt PDF
+            </a>
+          ) : null}
+          <Button
+            block
+            onClick={() => {
+              setSuccess(false);
+              router.push("/installments");
+            }}
+          >
+            Lihat Cicilan
+          </Button>
+        </div>
       </Modal>
     </div>
   );

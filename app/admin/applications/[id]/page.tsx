@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Check,
+  FileDown,
   FileText,
   PackageCheck,
   Phone,
@@ -251,20 +252,33 @@ export default function AdminApplicationDetailPage({
           ) : (
             <ul className="mt-3 divide-y divide-border text-sm">
               {payments.map((p: any) => (
-                <li key={p.id} className="flex justify-between py-2">
+                <li key={p.id} className="flex justify-between py-2 items-center">
                   <div>
                     <p className="font-semibold">{p.type.toUpperCase()}</p>
                     <p className="text-xs text-ink-muted">
                       {p.method} · {p.referenceNo}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{formatIDR(p.amount)}</p>
-                    <Badge
-                      tone={p.status === "paid" ? "success" : "warning"}
-                    >
-                      {p.status}
-                    </Badge>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <p className="font-semibold">{formatIDR(p.amount)}</p>
+                      <Badge
+                        tone={p.status === "paid" ? "success" : "warning"}
+                      >
+                        {p.status}
+                      </Badge>
+                    </div>
+                    {p.status === "paid" ? (
+                      <a
+                        href={`/api/payments/${p.id}/invoice`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-ghost h-9 px-3 text-xs"
+                      >
+                        <FileDown className="h-3.5 w-3.5" />
+                        PDF
+                      </a>
+                    ) : null}
                   </div>
                 </li>
               ))}
@@ -272,6 +286,25 @@ export default function AdminApplicationDetailPage({
           )}
         </Card>
       </div>
+
+      {/* Documents */}
+      <Card>
+        <CardTitle>Dokumen</CardTitle>
+        <p className="text-sm text-ink-muted mt-1">
+          Generate atau unduh dokumen legal terkait aplikasi ini.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a
+            href={`/api/applications/${app.id}/agreement`}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-secondary h-11 px-4 text-sm"
+          >
+            <FileDown className="h-4 w-4" />
+            Perjanjian Cicilan PDF
+          </a>
+        </div>
+      </Card>
 
       {/* Decide */}
       {!decided ? (

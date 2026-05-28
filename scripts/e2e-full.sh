@@ -277,6 +277,34 @@ if [ -n "$INS_ID" ]; then
   PAY_ID=$(echo "$PAY_RES" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['paymentId'])")
   CONFIRM_RES=$(curl -s -b /tmp/manggala-cust.cookie -X POST "$BASE/api/payments/$PAY_ID/confirm")
   check "Confirm installment payment" "$CONFIRM_RES"
+
+  # PDF endpoints
+  CODE=$(curl -s -b /tmp/manggala-cust.cookie -o /tmp/_pdf.pdf -w "%{http_code}" "$BASE/api/payments/$PAY_ID/invoice")
+  if [ "$CODE" = "200" ] && file /tmp/_pdf.pdf | grep -q "PDF document"; then
+    echo "✓ Invoice PDF generated"
+    OK=$((OK+1))
+  else
+    echo "✗ Invoice PDF (code $CODE)"
+    FAIL=$((FAIL+1))
+  fi
+
+  CODE=$(curl -s -b /tmp/manggala-cust.cookie -o /tmp/_pdf2.pdf -w "%{http_code}" "$BASE/api/applications/$APP_ID/agreement")
+  if [ "$CODE" = "200" ] && file /tmp/_pdf2.pdf | grep -q "PDF document"; then
+    echo "✓ Agreement PDF generated"
+    OK=$((OK+1))
+  else
+    echo "✗ Agreement PDF (code $CODE)"
+    FAIL=$((FAIL+1))
+  fi
+
+  CODE=$(curl -s -b /tmp/manggala-cust.cookie -o /tmp/_pdf3.pdf -w "%{http_code}" "$BASE/api/customer/statement")
+  if [ "$CODE" = "200" ] && file /tmp/_pdf3.pdf | grep -q "PDF document"; then
+    echo "✓ Statement PDF generated"
+    OK=$((OK+1))
+  else
+    echo "✗ Statement PDF (code $CODE)"
+    FAIL=$((FAIL+1))
+  fi
 fi
 
 # ============== LOGOUT ==============
