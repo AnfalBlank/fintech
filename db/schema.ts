@@ -242,7 +242,7 @@ export const payments = sqliteTable(
       .references(() => users.id),
     type: text("type", { enum: ["dp", "installment", "penalty"] }).notNull(),
     method: text("method", {
-      enum: ["va", "qris", "ewallet"],
+      enum: ["va", "qris", "ewallet", "transfer"],
     }).notNull(),
     channel: text("channel"), // BCA, BNI, GoPay, etc.
     amount: integer("amount").notNull(),

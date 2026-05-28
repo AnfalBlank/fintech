@@ -110,6 +110,17 @@ check "List my installments" "$RES"
 RES=$(curl -s -b /tmp/manggala-cust.cookie "$BASE/api/notifications")
 check "List notifications" "$RES"
 
+RES=$(curl -s -b /tmp/manggala-cust.cookie "$BASE/api/payment-config")
+check "Public payment config (no server key)" "$RES"
+HAS_KEY=$(echo "$RES" | python3 -c "import sys,json; d=json.load(sys.stdin); print('midtransServerKey' in d['data'])")
+if [ "$HAS_KEY" = "False" ]; then
+  echo "✓ Server key not exposed to customer"
+  OK=$((OK+1))
+else
+  echo "✗ Server key leaked to customer"
+  FAIL=$((FAIL+1))
+fi
+
 RES=$(curl -s -b /tmp/manggala-cust.cookie -X PATCH "$BASE/api/notifications" \
   -H "content-type: application/json" \
   -d '{}')
@@ -146,8 +157,8 @@ echo "  DP required: $DP_REQ, amount: $DP_AMOUNT"
 if [ "$DP_REQ" = "True" ] && [ "$DP_AMOUNT" -gt 0 ]; then
   PAY_RES=$(curl -s -b /tmp/manggala-cust.cookie -X POST "$BASE/api/payments" \
     -H "content-type: application/json" \
-    -d "{\"applicationId\":\"$APP_ID\",\"type\":\"dp\",\"method\":\"va\",\"channel\":\"BCA\",\"amount\":$DP_AMOUNT}")
-  check "Create DP payment intent" "$PAY_RES"
+    -d "{\"applicationId\":\"$APP_ID\",\"type\":\"dp\",\"method\":\"transfer\",\"channel\":\"BCA\",\"amount\":$DP_AMOUNT}")
+  check "Create DP payment intent (manual transfer)" "$PAY_RES"
   PAY_ID=$(echo "$PAY_RES" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['paymentId'])")
   CONFIRM_RES=$(curl -s -b /tmp/manggala-cust.cookie -X POST "$BASE/api/payments/$PAY_ID/confirm")
   check "Confirm DP payment" "$CONFIRM_RES"
@@ -273,7 +284,7 @@ if [ -n "$INS_ID" ]; then
   PAY_RES=$(curl -s -b /tmp/manggala-cust.cookie -X POST "$BASE/api/payments" \
     -H "content-type: application/json" \
     -d "{\"applicationId\":\"$APP_ID\",\"installmentId\":\"$INS_ID\",\"type\":\"installment\",\"method\":\"qris\",\"amount\":$INS_AMOUNT}")
-  check "Create installment payment" "$PAY_RES"
+  check "Create installment payment (QRIS)" "$PAY_RES"
   PAY_ID=$(echo "$PAY_RES" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['paymentId'])")
   CONFIRM_RES=$(curl -s -b /tmp/manggala-cust.cookie -X POST "$BASE/api/payments/$PAY_ID/confirm")
   check "Confirm installment payment" "$CONFIRM_RES"

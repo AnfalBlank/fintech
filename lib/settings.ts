@@ -4,31 +4,52 @@
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 
+export type BankAccount = {
+  bank: string; // BCA, BNI, Mandiri, BRI, etc.
+  accountNumber: string;
+  accountName: string;
+  notes?: string;
+};
+
 export type AppSettings = {
-  // Margin %
+  // ============ Margin %
   margin3m: number;
   margin6m: number;
   margin12m: number;
-  // L3 priority discount %
   marginL3Discount: number;
-  // Limits per trust level
+  // ============ Limits per trust level
   limitL1: number;
   limitL2: number;
   limitL3: number;
-  // DP %
+  // ============ DP %
   dpUnder5: number;
   dpUnder10: number;
   dpOver10: number;
-  // Operational
+  // ============ Operational
   noDpThreshold: number;
   maxAffordablePct: number; // 0..1
   otpTtlMinutes: number;
   paymentExpireHours: number;
-  penaltyDailyPct: number; // 0..1, default 0.001
-  // Coverage
+  penaltyDailyPct: number; // 0..1
+  // ============ Coverage
   coverageCities: string[];
-  // Marketplace whitelist
+  // ============ Marketplace whitelist
   allowedMarketplaces: string[];
+  // ============ E-signature
+  eSignAutoEnabled: boolean; // false = manual signature required on agreement
+  eSignProviderLabel: string; // shown on UI / PDF metadata
+  // ============ Payment methods
+  paymentMode: "manual" | "midtrans" | "mixed";
+  // Manual / mixed mode → bank accounts shown to customer
+  bankAccounts: BankAccount[];
+  // Manual / mixed mode → static QRIS image URL (any size, 1:1 ratio recommended)
+  qrisStaticImageUrl: string;
+  qrisMerchantName: string;
+  qrisMerchantId: string;
+  // Midtrans / mixed mode
+  midtransServerKey: string; // never exposed to client
+  midtransClientKey: string;
+  midtransProduction: boolean;
 };
 
 const DEFAULTS: AppSettings = {
@@ -49,12 +70,32 @@ const DEFAULTS: AppSettings = {
   penaltyDailyPct: 0.001,
   coverageCities: ["Jakarta", "Depok", "Tangerang", "Bogor", "Bekasi", "Bandung"],
   allowedMarketplaces: ["tokopedia", "shopee", "tiktok_shop", "lazada"],
+
+  // E-signature: default OFF — kontrak butuh ditandatangani manual.
+  eSignAutoEnabled: false,
+  eSignProviderLabel: "Manual",
+
+  // Payment: default manual karena belum integrasi gateway.
+  paymentMode: "manual",
+  bankAccounts: [
+    {
+      bank: "BCA",
+      accountNumber: "880-010-2933",
+      accountName: "PT. Manggala Utama Indonesia",
+    },
+  ],
+  qrisStaticImageUrl: "",
+  qrisMerchantName: "Manggala",
+  qrisMerchantId: "",
+  midtransServerKey: "",
+  midtransClientKey: "",
+  midtransProduction: false,
 };
 
 const KEY = "app";
 
 let cached: { at: number; value: AppSettings } | null = null;
-const TTL = 60_000; // 1 minute in-process cache
+const TTL = 30_000; // 30s in-process cache (shorter so toggles take effect fast)
 
 export async function loadSettings(): Promise<AppSettings> {
   if (cached && Date.now() - cached.at < TTL) return cached.value;
@@ -75,6 +116,15 @@ export async function loadSettings(): Promise<AppSettings> {
   }
   cached = { at: Date.now(), value };
   return value;
+}
+
+// Public-facing version omits secrets (server keys).
+export function publicSettings(s: AppSettings) {
+  const { midtransServerKey, ...rest } = s;
+  return {
+    ...rest,
+    midtransServerKey: midtransServerKey ? "•••••" : "",
+  };
 }
 
 export async function saveSettings(

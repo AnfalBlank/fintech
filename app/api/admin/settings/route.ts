@@ -11,6 +11,13 @@ export const GET = await requireAuth(ROLES)(async () => {
   return ok({ settings, defaults: defaultSettings() });
 });
 
+const BankAccount = z.object({
+  bank: z.string().min(1),
+  accountNumber: z.string().min(1),
+  accountName: z.string().min(1),
+  notes: z.string().optional(),
+});
+
 const Patch = z.object({
   margin3m: z.number().min(0).max(2).optional(),
   margin6m: z.number().min(0).max(2).optional(),
@@ -29,6 +36,18 @@ const Patch = z.object({
   penaltyDailyPct: z.number().min(0).max(0.1).optional(),
   coverageCities: z.array(z.string()).optional(),
   allowedMarketplaces: z.array(z.string()).optional(),
+  // E-signature
+  eSignAutoEnabled: z.boolean().optional(),
+  eSignProviderLabel: z.string().optional(),
+  // Payment
+  paymentMode: z.enum(["manual", "midtrans", "mixed"]).optional(),
+  bankAccounts: z.array(BankAccount).optional(),
+  qrisStaticImageUrl: z.string().optional(),
+  qrisMerchantName: z.string().optional(),
+  qrisMerchantId: z.string().optional(),
+  midtransServerKey: z.string().optional(),
+  midtransClientKey: z.string().optional(),
+  midtransProduction: z.boolean().optional(),
 });
 
 export const PATCH = await requireAuth(ROLES)(async (
@@ -37,7 +56,19 @@ export const PATCH = await requireAuth(ROLES)(async (
 ) => {
   const parsed = await parseJson(req, Patch);
   if (!parsed.ok) return fail(parsed.error, 400);
-  const next = await saveSettings(parsed.data, session.userId);
-  await audit(session.userId, "settings.update", "settings", "app", parsed.data);
-  return ok({ settings: next });
+
+  // Don't write empty server key — preserve existing if blank submitted.
+  const incoming = { ...parsed.data };
+  if (incoming.midtransServerKey === "" || incoming.midtransServerKey === "•••••") {
+    delete incoming.midtransServerKey;
+  }
+
+  const next = await saveSettings(incoming, session.userId);
+
+  // Redact server key in response.
+  const { midtransServerKey, ...safe } = next;
+  await audit(session.userId, "settings.update", "settings", "app", {
+    keys: Object.keys(parsed.data),
+  });
+  return ok({ settings: { ...safe, midtransServerKey: midtransServerKey ? "•••••" : "" } });
 });

@@ -6,6 +6,7 @@ import {
   Check,
   Copy,
   CreditCard,
+  Landmark,
   QrCode,
   Smartphone,
   Timer,
@@ -20,10 +21,21 @@ import { customer } from "@/lib/client";
 import { formatIDR, cn } from "@/lib/utils";
 import Link from "next/link";
 
-type Method = "va" | "qris" | "ewallet";
+type Method = "transfer" | "qris" | "va" | "ewallet";
 
 const banks = ["BCA", "BNI", "Mandiri", "BRI"];
 const ewallets = ["GoPay", "OVO", "Dana", "ShopeePay", "LinkAja", "Jenius"];
+
+type PaymentConfig = {
+  paymentMode: "manual" | "midtrans" | "mixed";
+  bankAccounts: { bank: string; accountNumber: string; accountName: string; notes?: string }[];
+  qrisStaticImageUrl: string;
+  qrisMerchantName: string;
+  qrisMerchantId: string;
+  midtransClientKey: string;
+  midtransProduction: boolean;
+  eSignAutoEnabled: boolean;
+};
 
 export default function PaymentsPage() {
   return (
@@ -38,20 +50,20 @@ function PaymentsInner() {
   const searchParams = useSearchParams();
   const toast = useToast();
 
-  // Determine context (DP or installment)
   const applicationId = searchParams.get("applicationId");
   const installmentId = searchParams.get("installmentId");
 
-  const [method, setMethod] = useState<Method>("va");
+  const [config, setConfig] = useState<PaymentConfig | null>(null);
+  const [method, setMethod] = useState<Method>("transfer");
   const [bank, setBank] = useState("BCA");
   const [ewallet, setEwallet] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [intent, setIntent] = useState<any | null>(null);
   const [resolving, setResolving] = useState(true);
+  const [intent, setIntent] = useState<any | null>(null);
   const [target, setTarget] = useState<{
     appId?: string;
     type: "dp" | "installment";
@@ -60,7 +72,18 @@ function PaymentsInner() {
     title: string;
   } | null>(null);
 
-  // Determine the payment target on mount
+  // Fetch payment config first to set default method
+  useEffect(() => {
+    customer.paymentConfig().then((res) => {
+      if (res.ok) {
+        setConfig(res.data);
+        if (res.data.paymentMode === "midtrans") setMethod("va");
+        else setMethod("transfer");
+      }
+    });
+  }, []);
+
+  // Determine target on mount
   useEffect(() => {
     (async () => {
       try {
@@ -72,7 +95,7 @@ function PaymentsInner() {
             const ins = res.data.installments.find(
               (i: any) => i.id === installmentId
             );
-            if (ins) {
+            if (ins)
               setTarget({
                 appId: applicationId,
                 type: "installment",
@@ -80,7 +103,6 @@ function PaymentsInner() {
                 insId: ins.id,
                 title: `Cicilan ke-${ins.sequence}`,
               });
-            }
           } else if (app.dpRequired && app.status === "dp_pending") {
             setTarget({
               appId: applicationId,
@@ -89,7 +111,6 @@ function PaymentsInner() {
               title: "Down Payment",
             });
           } else {
-            // Latest unpaid installment
             const ins = res.data.installments.find(
               (i: any) => i.status !== "paid"
             );
@@ -103,12 +124,10 @@ function PaymentsInner() {
               });
           }
         } else {
-          // Pick first overdue/due across all installments
           const res = await customer.installments();
           if (res.ok) {
-            const items = res.data.items;
-            const due = items.find((i: any) => i.ins.status !== "paid");
-            if (due) {
+            const due = res.data.items.find((i: any) => i.ins.status !== "paid");
+            if (due)
               setTarget({
                 appId: due.app.id,
                 type: "installment",
@@ -116,7 +135,6 @@ function PaymentsInner() {
                 insId: due.ins.id,
                 title: `${due.product?.title ?? "Cicilan"} #${due.ins.sequence}`,
               });
-            }
           }
         }
       } finally {
@@ -125,7 +143,7 @@ function PaymentsInner() {
     })();
   }, [applicationId, installmentId, toast]);
 
-  // Countdown timer (24h)
+  // Countdown
   const [timeLeft, setTimeLeft] = useState(60 * 60 * 24);
   useEffect(() => {
     const t = setInterval(() => setTimeLeft((x) => Math.max(0, x - 1)), 1000);
@@ -135,7 +153,7 @@ function PaymentsInner() {
   const minutes = Math.floor((timeLeft % 3600) / 60);
   const seconds = timeLeft % 60;
 
-  if (resolving) {
+  if (resolving || !config) {
     return (
       <div className="max-w-2xl mx-auto space-y-4">
         <div className="skeleton h-32" />
@@ -163,6 +181,14 @@ function PaymentsInner() {
     );
   }
 
+  // Available methods based on mode
+  const availableMethods: Method[] =
+    config.paymentMode === "manual"
+      ? ["transfer", "qris"]
+      : config.paymentMode === "midtrans"
+        ? ["va", "qris", "ewallet"]
+        : ["transfer", "qris", "va", "ewallet"];
+
   const createIntent = async () => {
     if (!target.appId) return;
     setCreating(true);
@@ -172,33 +198,39 @@ function PaymentsInner() {
       type: target.type,
       method,
       channel:
-        method === "va" ? bank : method === "ewallet" ? ewallet ?? undefined : undefined,
+        method === "va"
+          ? bank
+          : method === "ewallet"
+            ? ewallet ?? undefined
+            : undefined,
       amount: target.amount,
     });
     setCreating(false);
-    if (!res.ok) return toast.danger("Gagal buat pembayaran", res.error);
+    if (!res.ok) return toast.danger("Gagal", res.error);
     setIntent(res.data);
-    toast.success(
-      "Instruksi pembayaran dibuat",
-      method === "va" ? "Salin nomor VA" : "Lanjutkan pembayaran"
-    );
+    toast.success("Instruksi pembayaran dibuat");
   };
 
-  const copy = () => {
-    const va = intent?.payload?.va ?? "";
-    navigator.clipboard.writeText(va.replaceAll("-", ""));
-    setCopied(true);
-    toast.success("Nomor VA disalin");
-    setTimeout(() => setCopied(false), 1500);
+  const copyText = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    toast.success("Disalin");
+    setTimeout(() => setCopied(null), 1500);
   };
 
   const confirm = async () => {
     if (!intent) return;
+    if (config.paymentMode !== "midtrans") {
+      // For manual / mixed (transfer / QRIS static), the customer is
+      // confirming they have transferred. Backend marks pending and waits
+      // for admin manual reconciliation; for now we still call confirm
+      // (mock). In production this endpoint should require receipt upload.
+    }
     setSubmitting(true);
     const res = await customer.confirmPayment(intent.paymentId);
     setSubmitting(false);
     setConfirmOpen(false);
-    if (!res.ok) return toast.danger("Konfirmasi gagal", res.error);
+    if (!res.ok) return toast.danger("Gagal", res.error);
     setSuccess(true);
   };
 
@@ -223,41 +255,211 @@ function PaymentsInner() {
 
       <Card>
         <CardTitle>Pilih Metode Pembayaran</CardTitle>
-        <div className="mt-4 grid sm:grid-cols-3 gap-3">
-          <MethodCard
-            active={method === "va"}
-            onClick={() => {
-              setMethod("va");
-              setIntent(null);
-            }}
-            Icon={Banknote}
-            title="Virtual Account"
-            desc="BCA, BNI, Mandiri"
-          />
-          <MethodCard
-            active={method === "qris"}
-            onClick={() => {
-              setMethod("qris");
-              setIntent(null);
-            }}
-            Icon={QrCode}
-            title="QRIS"
-            desc="Semua e-wallet"
-          />
-          <MethodCard
-            active={method === "ewallet"}
-            onClick={() => {
-              setMethod("ewallet");
-              setIntent(null);
-            }}
-            Icon={Smartphone}
-            title="E-Wallet"
-            desc="GoPay, OVO, Dana"
-          />
+        <div
+          className="mt-4 grid gap-3"
+          style={{
+            gridTemplateColumns: `repeat(${Math.min(availableMethods.length, 4)}, minmax(0, 1fr))`,
+          }}
+        >
+          {availableMethods.includes("transfer") ? (
+            <MethodCard
+              active={method === "transfer"}
+              onClick={() => {
+                setMethod("transfer");
+                setIntent(null);
+              }}
+              Icon={Landmark}
+              title="Transfer"
+              desc="Manual ke rekening bank"
+            />
+          ) : null}
+          {availableMethods.includes("qris") ? (
+            <MethodCard
+              active={method === "qris"}
+              onClick={() => {
+                setMethod("qris");
+                setIntent(null);
+              }}
+              Icon={QrCode}
+              title="QRIS"
+              desc="Scan QR statis / dinamis"
+            />
+          ) : null}
+          {availableMethods.includes("va") ? (
+            <MethodCard
+              active={method === "va"}
+              onClick={() => {
+                setMethod("va");
+                setIntent(null);
+              }}
+              Icon={Banknote}
+              title="Virtual Account"
+              desc="Otomatis (Midtrans)"
+            />
+          ) : null}
+          {availableMethods.includes("ewallet") ? (
+            <MethodCard
+              active={method === "ewallet"}
+              onClick={() => {
+                setMethod("ewallet");
+                setIntent(null);
+              }}
+              Icon={Smartphone}
+              title="E-Wallet"
+              desc="GoPay, OVO, Dana"
+            />
+          ) : null}
         </div>
       </Card>
 
       <Card>
+        {/* Manual transfer */}
+        {method === "transfer" ? (
+          <>
+            <CardTitle>Transfer Bank</CardTitle>
+            <p className="text-sm text-ink-muted mt-1">
+              Transfer sesuai nominal ke salah satu rekening berikut, lalu
+              klik "Saya Sudah Bayar".
+            </p>
+            {intent ? (
+              <div className="mt-4 space-y-3">
+                {(intent.payload.bankAccounts as PaymentConfig["bankAccounts"]).map(
+                  (b, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-2xl border border-border p-4 flex items-center justify-between flex-wrap gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs text-ink-muted">{b.bank}</p>
+                        <p className="font-mono text-xl font-bold text-ink mt-0.5">
+                          {b.accountNumber}
+                        </p>
+                        <p className="text-xs text-ink-muted mt-0.5">
+                          a.n. {b.accountName}
+                        </p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() =>
+                          copyText(
+                            b.accountNumber.replace(/[\s-]/g, ""),
+                            `bank-${idx}`
+                          )
+                        }
+                      >
+                        {copied === `bank-${idx}` ? (
+                          <>
+                            <Check className="h-4 w-4" /> Disalin
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-4 w-4" /> Salin
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )
+                )}
+                <div className="rounded-2xl bg-warning/10 border border-warning/20 p-3 text-xs text-ink">
+                  <p className="font-semibold">Penting</p>
+                  <ul className="mt-1 list-disc list-inside text-ink-muted space-y-0.5">
+                    <li>
+                      Transfer tepat sebesar{" "}
+                      <span className="font-semibold text-ink">
+                        {formatIDR(target.amount)}
+                      </span>
+                    </li>
+                    <li>
+                      Sertakan kode referensi{" "}
+                      <span className="font-mono font-semibold text-ink">
+                        {intent.referenceNo}
+                      </span>{" "}
+                      di berita transfer
+                    </li>
+                    <li>Konfirmasi akan diverifikasi admin maks 2 jam kerja</li>
+                  </ul>
+                </div>
+              </div>
+            ) : config.bankAccounts.length === 0 ? (
+              <p className="mt-4 text-sm text-warning">
+                Admin belum menambahkan rekening transfer. Hubungi support.
+              </p>
+            ) : (
+              <Button
+                block
+                className="mt-4"
+                onClick={createIntent}
+                disabled={creating}
+              >
+                {creating ? "Memproses…" : "Tampilkan Rekening"}
+              </Button>
+            )}
+          </>
+        ) : null}
+
+        {/* QRIS */}
+        {method === "qris" ? (
+          <>
+            <CardTitle>QRIS</CardTitle>
+            {intent ? (
+              <div className="mt-4">
+                {intent.payload.imageUrl ? (
+                  <div className="grid place-items-center">
+                    <img
+                      src={intent.payload.imageUrl}
+                      alt="QRIS"
+                      className="h-64 w-64 rounded-3xl border border-border bg-white object-contain p-3"
+                    />
+                    <p className="mt-3 font-semibold">
+                      {intent.payload.merchantName}
+                    </p>
+                    {intent.payload.merchantId ? (
+                      <p className="text-xs text-ink-muted">
+                        NMID: {intent.payload.merchantId}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="grid place-items-center">
+                    <div className="h-56 w-56 rounded-3xl border-2 border-dashed border-border grid place-items-center bg-slate-50">
+                      <QrCode className="h-32 w-32 text-ink-muted" />
+                    </div>
+                    <p className="mt-3 text-sm text-ink-muted">
+                      QR akan generate dari Midtrans setelah pembayaran dipicu.
+                    </p>
+                  </div>
+                )}
+                <div className="mt-4 rounded-2xl bg-warning/10 border border-warning/20 p-3 text-xs text-ink">
+                  Transfer{" "}
+                  <span className="font-semibold">
+                    {formatIDR(target.amount)}
+                  </span>{" "}
+                  · Ref{" "}
+                  <span className="font-mono font-semibold">
+                    {intent.referenceNo}
+                  </span>
+                </div>
+              </div>
+            ) : !config.qrisStaticImageUrl &&
+              config.paymentMode !== "midtrans" ? (
+              <p className="mt-4 text-sm text-warning">
+                Admin belum upload QR static. Hubungi support.
+              </p>
+            ) : (
+              <Button
+                block
+                className="mt-4"
+                onClick={createIntent}
+                disabled={creating}
+              >
+                {creating ? "Memproses…" : "Tampilkan QRIS"}
+              </Button>
+            )}
+          </>
+        ) : null}
+
+        {/* Virtual Account (Midtrans) */}
         {method === "va" ? (
           <>
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -288,17 +490,22 @@ function PaymentsInner() {
                 <div>
                   <p className="text-xs text-ink-muted">Nomor VA</p>
                   <p className="font-mono text-2xl font-bold text-ink mt-1">
-                    {intent.payload.va}
+                    {intent.payload.vaNumber}
                   </p>
                   <p className="text-xs text-ink-muted mt-1">
                     a.n. {intent.payload.accountName}
                   </p>
-                  <p className="text-xs text-ink-muted">
-                    Ref: {intent.referenceNo}
-                  </p>
                 </div>
-                <Button variant="secondary" onClick={copy}>
-                  {copied ? (
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    copyText(
+                      String(intent.payload.vaNumber).replace(/-/g, ""),
+                      "va"
+                    )
+                  }
+                >
+                  {copied === "va" ? (
                     <>
                       <Check className="h-4 w-4" /> Disalin
                     </>
@@ -309,43 +516,27 @@ function PaymentsInner() {
                   )}
                 </Button>
               </div>
+            ) : !config.midtransClientKey ? (
+              <p className="mt-4 text-sm text-warning">
+                Midtrans belum dikonfigurasi. Hubungi admin.
+              </p>
             ) : (
-              <Button block className="mt-4" onClick={createIntent} disabled={creating}>
+              <Button
+                block
+                className="mt-4"
+                onClick={createIntent}
+                disabled={creating}
+              >
                 {creating ? "Memproses…" : `Generate VA ${bank}`}
               </Button>
             )}
           </>
         ) : null}
 
-        {method === "qris" ? (
-          intent ? (
-            <>
-              <CardTitle>Scan QRIS</CardTitle>
-              <div className="mt-4 grid place-items-center">
-                <div className="h-56 w-56 rounded-3xl border-2 border-dashed border-border grid place-items-center bg-slate-50">
-                  <QrCode className="h-32 w-32 text-ink-muted" />
-                </div>
-                <p className="mt-3 text-sm text-ink-muted">
-                  Scan dengan aplikasi e-wallet atau mobile banking
-                </p>
-                <p className="text-xs text-ink-muted mt-1">
-                  Ref: {intent.referenceNo}
-                </p>
-              </div>
-            </>
-          ) : (
-            <>
-              <CardTitle>QRIS</CardTitle>
-              <Button block className="mt-4" onClick={createIntent} disabled={creating}>
-                {creating ? "Memproses…" : "Generate QRIS"}
-              </Button>
-            </>
-          )
-        ) : null}
-
+        {/* E-wallet (Midtrans) */}
         {method === "ewallet" ? (
           <>
-            <CardTitle>Pilih E-Wallet</CardTitle>
+            <CardTitle>E-Wallet</CardTitle>
             <div className="mt-4 grid grid-cols-3 gap-3">
               {ewallets.map((e) => (
                 <button
@@ -372,6 +563,10 @@ function PaymentsInner() {
                   {intent.payload.deepLink}
                 </p>
               </div>
+            ) : !config.midtransClientKey ? (
+              <p className="mt-4 text-sm text-warning">
+                Midtrans belum dikonfigurasi. Hubungi admin.
+              </p>
             ) : (
               <Button
                 block
@@ -408,7 +603,11 @@ function PaymentsInner() {
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         title="Konfirmasi pembayaran"
-        description="Sistem akan memvalidasi pembayaran. Anda akan menerima notifikasi."
+        description={
+          method === "transfer" || method === "qris"
+            ? "Pembayaran akan diverifikasi manual oleh admin (maks 2 jam kerja)."
+            : "Sistem akan memvalidasi via gateway. Anda akan dapat notifikasi setelah terkonfirmasi."
+        }
       >
         <div className="rounded-2xl bg-slate-50 p-4 text-sm">
           <Row label="Metode" value={method.toUpperCase()} />
@@ -430,8 +629,12 @@ function PaymentsInner() {
           setSuccess(false);
           router.push("/installments");
         }}
-        title="Pembayaran berhasil"
-        description="Pembayaran telah tercatat di sistem."
+        title="Pembayaran terkirim"
+        description={
+          method === "transfer" || method === "qris"
+            ? "Tim Manggala akan verifikasi transfer Anda dalam 2 jam kerja."
+            : "Pembayaran terkonfirmasi otomatis."
+        }
       >
         <div className="text-center py-4">
           <div className="mx-auto h-16 w-16 rounded-full bg-emerald/10 grid place-items-center">

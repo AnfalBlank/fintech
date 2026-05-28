@@ -10,6 +10,8 @@ import { styles, fmt, fmtDate, colors } from "./styles";
 export type AgreementData = {
   agreementNo: string;
   signedAt: Date;
+  autoSigned: boolean;
+  eSignProvider?: string;
   customer: {
     name: string;
     phone: string;
@@ -201,13 +203,12 @@ export async function renderAgreement(data: AgreementData): Promise<Buffer> {
           <Text
             style={{ fontFamily: "Helvetica-Bold", marginTop: 4, marginBottom: 4 }}
           >
-            Pasal 5 — Tanda Tangan Elektronik
+            Pasal 5 — {data.autoSigned ? "Tanda Tangan Elektronik" : "Tanda Tangan Manual"}
           </Text>
           <Text style={styles.paragraph}>
-            Para Pihak menyetujui bahwa tanda tangan elektronik yang dilakukan
-            melalui platform Manggala memiliki kekuatan hukum yang sama dengan
-            tanda tangan basah, sebagaimana diatur dalam UU No. 11/2008 jo. UU
-            No. 19/2016 tentang Informasi dan Transaksi Elektronik.
+            {data.autoSigned
+              ? "Para Pihak menyetujui bahwa tanda tangan elektronik yang dilakukan melalui platform Manggala memiliki kekuatan hukum yang sama dengan tanda tangan basah, sebagaimana diatur dalam UU No. 11/2008 jo. UU No. 19/2016 tentang Informasi dan Transaksi Elektronik."
+              : "Perjanjian ini wajib ditandatangani secara basah di atas materai yang sah oleh kedua belah pihak. Setelah ditandatangani, dokumen perlu dipindai dan diunggah kembali ke platform Manggala untuk validasi dan arsip resmi."}
           </Text>
         </View>
 
@@ -261,20 +262,28 @@ export async function renderAgreement(data: AgreementData): Promise<Buffer> {
           <View>
             <Text style={styles.sectionTitle}>Pihak Pertama</Text>
             <View style={styles.signatureBox}>
-              <Text style={styles.signatureLabel}>Tanda tangan digital</Text>
+              <Text style={styles.signatureLabel}>
+                {data.autoSigned
+                  ? `Tanda tangan elektronik · ${data.eSignProvider ?? "Manggala"}`
+                  : "Tanda tangan & cap"}
+              </Text>
               <Text style={styles.signatureName}>Manggala Authorized</Text>
               <Text style={[styles.signatureLabel, { marginTop: 2 }]}>
-                {fmtDate(data.signedAt)}
+                {data.autoSigned ? fmtDate(data.signedAt) : "________________"}
               </Text>
             </View>
           </View>
           <View>
             <Text style={styles.sectionTitle}>Pihak Kedua</Text>
             <View style={styles.signatureBox}>
-              <Text style={styles.signatureLabel}>Tanda tangan digital</Text>
+              <Text style={styles.signatureLabel}>
+                {data.autoSigned
+                  ? `Tanda tangan elektronik · ${data.eSignProvider ?? "Manggala"}`
+                  : "Tanda tangan & nama jelas"}
+              </Text>
               <Text style={styles.signatureName}>{data.customer.name}</Text>
               <Text style={[styles.signatureLabel, { marginTop: 2 }]}>
-                {fmtDate(data.signedAt)}
+                {data.autoSigned ? fmtDate(data.signedAt) : "________________"}
               </Text>
             </View>
           </View>
@@ -288,8 +297,9 @@ export async function renderAgreement(data: AgreementData): Promise<Buffer> {
             textAlign: "center",
           }}
         >
-          Dokumen ini sah dan mengikat secara hukum berdasarkan UU ITE.
-          Hash dokumen tersimpan di sistem audit Manggala.
+          {data.autoSigned
+            ? `Dokumen ini telah ditandatangani secara elektronik melalui ${data.eSignProvider ?? "Manggala"} dan sah secara hukum berdasarkan UU ITE. Hash dokumen tersimpan di sistem audit.`
+            : "Dokumen ini wajib dicetak, ditandatangani basah oleh kedua belah pihak, lalu di-scan dan diunggah kembali ke platform untuk validasi tim Manggala."}
         </Text>
 
         <View style={styles.footer} fixed>

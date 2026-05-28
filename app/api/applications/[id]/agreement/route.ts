@@ -5,6 +5,7 @@ import { fail, requireAuth } from "@/lib/api";
 import { renderAgreement } from "@/lib/pdf/agreement";
 import { isAdmin } from "@/lib/auth";
 import { audit } from "@/lib/services";
+import { loadSettings } from "@/lib/settings";
 import type { NextRequest } from "next/server";
 
 export const GET = await requireAuth()(async (
@@ -57,6 +58,8 @@ export const GET = await requireAuth()(async (
 
   if (!user || !product) return fail("Data lengkap tidak ditemukan", 404);
 
+  const settings = await loadSettings();
+
   // Generate placeholder schedule if none yet (pre-delivery).
   const schedule =
     installments.length > 0
@@ -78,6 +81,8 @@ export const GET = await requireAuth()(async (
   const buffer = await renderAgreement({
     agreementNo: `AGR-${app.id}`,
     signedAt: app.reviewedAt ?? app.submittedAt,
+    autoSigned: settings.eSignAutoEnabled,
+    eSignProvider: settings.eSignProviderLabel,
     customer: {
       name: user.name,
       phone: user.phone,

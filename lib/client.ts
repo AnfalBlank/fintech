@@ -64,6 +64,17 @@ export const auth = {
 
 // ============= Customer =============
 export const customer = {
+  paymentConfig: () =>
+    api.get<{
+      paymentMode: "manual" | "midtrans" | "mixed";
+      bankAccounts: { bank: string; accountNumber: string; accountName: string; notes?: string }[];
+      qrisStaticImageUrl: string;
+      qrisMerchantName: string;
+      qrisMerchantId: string;
+      midtransClientKey: string;
+      midtransProduction: boolean;
+      eSignAutoEnabled: boolean;
+    }>("/api/payment-config"),
   scrape: (url: string) =>
     api.post<{ product: any; simulations: any[] }>("/api/products/scrape", {
       url,
@@ -76,7 +87,7 @@ export const customer = {
     applicationId: string;
     installmentId?: string;
     type: "dp" | "installment" | "penalty";
-    method: "va" | "qris" | "ewallet";
+    method: "va" | "qris" | "ewallet" | "transfer";
     channel?: string;
     amount: number;
   }) => api.post<any>("/api/payments", body),
