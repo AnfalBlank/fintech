@@ -160,8 +160,11 @@ if [ "$DP_REQ" = "True" ] && [ "$DP_AMOUNT" -gt 0 ]; then
     -d "{\"applicationId\":\"$APP_ID\",\"type\":\"dp\",\"method\":\"transfer\",\"channel\":\"BCA\",\"amount\":$DP_AMOUNT}")
   check "Create DP payment intent (manual transfer)" "$PAY_RES"
   PAY_ID=$(echo "$PAY_RES" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['paymentId'])")
-  CONFIRM_RES=$(curl -s -b /tmp/manggala-cust.cookie -X POST "$BASE/api/payments/$PAY_ID/confirm")
-  check "Confirm DP payment" "$CONFIRM_RES"
+  CLAIM_RES=$(curl -s -b /tmp/manggala-cust.cookie -X POST "$BASE/api/payments/$PAY_ID/claim" \
+    -H "content-type: application/json" -d '{}')
+  check "Customer claim DP payment" "$CLAIM_RES"
+  CONFIRM_RES=$(curl -s -b /tmp/manggala-fin.cookie -X POST "$BASE/api/payments/$PAY_ID/confirm")
+  check "Admin confirm DP payment" "$CONFIRM_RES"
 fi
 
 # ============== ADMIN: WAREHOUSE ==============
@@ -286,8 +289,11 @@ if [ -n "$INS_ID" ]; then
     -d "{\"applicationId\":\"$APP_ID\",\"installmentId\":\"$INS_ID\",\"type\":\"installment\",\"method\":\"qris\",\"amount\":$INS_AMOUNT}")
   check "Create installment payment (QRIS)" "$PAY_RES"
   PAY_ID=$(echo "$PAY_RES" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['paymentId'])")
-  CONFIRM_RES=$(curl -s -b /tmp/manggala-cust.cookie -X POST "$BASE/api/payments/$PAY_ID/confirm")
-  check "Confirm installment payment" "$CONFIRM_RES"
+  CLAIM_RES=$(curl -s -b /tmp/manggala-cust.cookie -X POST "$BASE/api/payments/$PAY_ID/claim" \
+    -H "content-type: application/json" -d '{}')
+  check "Customer claim installment payment" "$CLAIM_RES"
+  CONFIRM_RES=$(curl -s -b /tmp/manggala-fin.cookie -X POST "$BASE/api/payments/$PAY_ID/confirm")
+  check "Admin confirm installment payment" "$CONFIRM_RES"
 
   # PDF endpoints
   CODE=$(curl -s -b /tmp/manggala-cust.cookie -o /tmp/_pdf.pdf -w "%{http_code}" "$BASE/api/payments/$PAY_ID/invoice")
@@ -327,6 +333,39 @@ RES=$(curl -s -b /tmp/manggala-admin.cookie -X POST "$BASE/api/auth/logout")
 check "Admin logout" "$RES"
 RES=$(curl -s -b /tmp/manggala-cou.cookie -X POST "$BASE/api/auth/logout")
 check "Courier logout" "$RES"
+
+# ============== INFRA ==============
+echo
+echo "== INFRA"
+RES=$(curl -s "$BASE/api/health")
+if echo "$RES" | grep -q '"status":"ok"'; then
+  echo "✓ /api/health returns ok"
+  OK=$((OK+1))
+else
+  echo "✗ /api/health  → $RES"
+  FAIL=$((FAIL+1))
+fi
+
+CSP=$(curl -sI "$BASE/login" | grep -i "Content-Security-Policy")
+if [ -n "$CSP" ]; then
+  echo "✓ Security headers (CSP) present"
+  OK=$((OK+1))
+else
+  echo "✗ Security headers missing"
+  FAIL=$((FAIL+1))
+fi
+
+# Midtrans webhook signature verification
+INVALID=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/webhooks/midtrans" \
+  -H "content-type: application/json" \
+  -d '{"order_id":"X","status_code":"200","gross_amount":"1.00","signature_key":"WRONG","transaction_status":"settlement"}')
+if [ "$INVALID" = "401" ]; then
+  echo "✓ Midtrans webhook rejects invalid signature"
+  OK=$((OK+1))
+else
+  echo "✗ Midtrans webhook signature check (got $INVALID)"
+  FAIL=$((FAIL+1))
+fi
 
 echo
 echo "================================================"

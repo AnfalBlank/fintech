@@ -5,6 +5,7 @@ import { fail, ok, parseJson, requireAuth } from "@/lib/api";
 import { newReference, paymentId } from "@/lib/ids";
 import { audit, notify } from "@/lib/services";
 import { loadSettings } from "@/lib/settings";
+import { createCharge } from "@/lib/midtrans";
 import type { NextRequest } from "next/server";
 
 const Body = z.object({
@@ -108,23 +109,75 @@ export const POST = await requireAuth(["customer"] as const)(async (
       amount,
     };
   } else if (method === "va") {
-    // Midtrans-driven (still mock until real key+webhook hooked up).
-    payload = {
-      mode: "midtrans_va",
-      referenceNo: ref,
-      bank: channel ?? "BCA",
-      vaNumber: "8800-" + ref.slice(-12).match(/.{1,4}/g)!.join("-"),
-      accountName: "PT. Manggala Utama Indonesia",
-      productionMode: settings.midtransProduction,
-    };
+    // Real Midtrans charge call. Falls back to mock structure if Midtrans
+    // is not configured yet (so dev mode keeps working).
+    if (settings.midtransServerKey) {
+      const charge = await createCharge({
+        payment_type: "bank_transfer",
+        transaction_details: { order_id: ref, gross_amount: amount },
+        bank_transfer: { bank: (channel ?? "bca").toLowerCase() },
+      });
+      if (!charge.ok) {
+        return fail(`Midtrans error: ${charge.error}`, 502);
+      }
+      const va =
+        charge.data?.va_numbers?.[0]?.va_number ??
+        charge.data?.permata_va_number ??
+        charge.data?.bill_key;
+      payload = {
+        mode: "midtrans_va",
+        referenceNo: ref,
+        bank: channel ?? "BCA",
+        vaNumber: va ?? "—",
+        accountName: "PT. Manggala Utama Indonesia",
+        productionMode: settings.midtransProduction,
+        midtransRaw: {
+          transaction_id: charge.data?.transaction_id,
+          status: charge.data?.transaction_status,
+        },
+      };
+    } else {
+      payload = {
+        mode: "midtrans_va",
+        referenceNo: ref,
+        bank: channel ?? "BCA",
+        vaNumber: "8800-" + ref.slice(-12).match(/.{1,4}/g)!.join("-"),
+        accountName: "PT. Manggala Utama Indonesia",
+        productionMode: settings.midtransProduction,
+      };
+    }
   } else if (method === "ewallet") {
-    payload = {
-      mode: "midtrans_ewallet",
-      referenceNo: ref,
-      provider: channel ?? "GoPay",
-      deepLink: `${(channel ?? "gopay").toLowerCase()}://pay/${ref}`,
-      productionMode: settings.midtransProduction,
-    };
+    if (settings.midtransServerKey) {
+      const provider = (channel ?? "gopay").toLowerCase();
+      const charge = await createCharge({
+        payment_type:
+          provider === "shopeepay" ? "shopeepay" : "gopay",
+        transaction_details: { order_id: ref, gross_amount: amount },
+        gopay: { enable_callback: true },
+      });
+      if (!charge.ok) {
+        return fail(`Midtrans error: ${charge.error}`, 502);
+      }
+      const action = (charge.data?.actions ?? []).find(
+        (a: any) => a.name === "deeplink-redirect"
+      );
+      payload = {
+        mode: "midtrans_ewallet",
+        referenceNo: ref,
+        provider: channel ?? "GoPay",
+        deepLink: action?.url ?? `${provider}://pay/${ref}`,
+        productionMode: settings.midtransProduction,
+        midtransRaw: { transaction_id: charge.data?.transaction_id },
+      };
+    } else {
+      payload = {
+        mode: "midtrans_ewallet",
+        referenceNo: ref,
+        provider: channel ?? "GoPay",
+        deepLink: `${(channel ?? "gopay").toLowerCase()}://pay/${ref}`,
+        productionMode: settings.midtransProduction,
+      };
+    }
   }
 
   return ok({

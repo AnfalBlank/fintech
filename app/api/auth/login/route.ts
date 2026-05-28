@@ -6,6 +6,7 @@ import { fail, ok, parseJson } from "@/lib/api";
 import { createSession, SESSION_COOKIE } from "@/lib/auth";
 import { audit } from "@/lib/services";
 import { bindDevice } from "@/lib/device";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 
@@ -15,6 +16,13 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // 10 attempts per IP per 10 min — resists password spraying.
+  const limited = await enforceRateLimit(req, "auth-login", {
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   const parsed = await parseJson(req, Body);
   if (!parsed.ok) return fail(parsed.error, 400);
   const { identifier, password } = parsed.data;
@@ -55,6 +63,7 @@ export async function POST(req: NextRequest) {
   cookies().set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 7 * 24 * 60 * 60,
   });

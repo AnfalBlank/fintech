@@ -114,6 +114,16 @@ export async function loadSettings(): Promise<AppSettings> {
       value = DEFAULTS;
     }
   }
+  // Env fallback for sensitive Midtrans keys — useful for fresh deploys.
+  if (!value.midtransServerKey && process.env.MIDTRANS_SERVER_KEY) {
+    value = { ...value, midtransServerKey: process.env.MIDTRANS_SERVER_KEY };
+  }
+  if (
+    value.midtransProduction === false &&
+    process.env.MIDTRANS_PRODUCTION === "true"
+  ) {
+    value = { ...value, midtransProduction: true };
+  }
   cached = { at: Date.now(), value };
   return value;
 }

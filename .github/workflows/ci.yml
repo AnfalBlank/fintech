@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check + Build
+        env:
+          # Build only needs schema-discovery and lint, never DB ping.
+          # Provide harmless dummies so loadSettings won't crash.
+          TURSO_DATABASE_URL: file:./build.db
+          JWT_SECRET: ci-build-secret-placeholder
+        run: npm run build
+
+  audit:
+    name: npm audit (production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        run: npm ci
+      - name: Audit (high severity only, prod deps)
+        run: npm audit --omit=dev --audit-level=high || echo "audit warnings logged"
+
+  e2e:
+    name: E2E smoke (optional)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: build
+    if: ${{ false }} # Disabled by default — needs Turso staging instance.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.STAGING_TURSO_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.STAGING_TURSO_TOKEN }}
+          JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+      - name: Start
+        run: |
+          npm run start -- --port 3001 &
+          sleep 8
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.STAGING_TURSO_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.STAGING_TURSO_TOKEN }}
+          JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
+      - name: Run e2e
+        run: bash scripts/e2e-full.sh

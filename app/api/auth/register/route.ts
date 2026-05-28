@@ -6,6 +6,7 @@ import { fail, ok, parseJson } from "@/lib/api";
 import { userId, newOtp, newId } from "@/lib/ids";
 import { audit, notify } from "@/lib/services";
 import { bindDevice } from "@/lib/device";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { createSession, SESSION_COOKIE } from "@/lib/auth";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
@@ -20,6 +21,13 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // 5 registrations per IP per 10 min — prevents account farming.
+  const limited = await enforceRateLimit(req, "auth-register", {
+    limit: 5,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   const parsed = await parseJson(req, Body);
   if (!parsed.ok) return fail(parsed.error, 400, parsed.details);
   const { name, email, phone, password, consentTnc, consentData } = parsed.data;

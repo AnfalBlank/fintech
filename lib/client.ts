@@ -93,6 +93,24 @@ export const customer = {
   }) => api.post<any>("/api/payments", body),
   confirmPayment: (id: string) =>
     api.post<{ confirmed: boolean }>(`/api/payments/${id}/confirm`),
+  claimPayment: (id: string, body: { proofKey?: string; note?: string }) =>
+    api.post<any>(`/api/payments/${id}/claim`, body),
+  presignUpload: (body: {
+    category: "ktp" | "selfie" | "payslip" | "bankstmt" | "qc" | "delivery_proof" | "signature";
+    filename: string;
+    contentType: string;
+    ownerId?: string;
+  }) =>
+    api.post<{
+      key: string;
+      uploadUrl: string;
+      expiresAt: string;
+      maxBytes: number;
+    }>("/api/uploads/presign", body),
+  signUploadView: (key: string) =>
+    api.post<{ url: string; expiresInSec: number }>("/api/uploads/sign", {
+      key,
+    }),
   notifications: () => api.get<{ items: any[] }>("/api/notifications"),
   markNotificationsRead: (ids?: string[]) =>
     api.patch<{ updated: boolean }>("/api/notifications", { ids }),

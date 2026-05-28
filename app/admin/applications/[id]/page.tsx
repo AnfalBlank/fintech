@@ -268,6 +268,27 @@ export default function AdminApplicationDetailPage({
                         {p.status}
                       </Badge>
                     </div>
+                    {p.status === "pending" ? (
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={async () => {
+                          const res = await fetch(
+                            `/api/payments/${p.id}/confirm`,
+                            { method: "POST" }
+                          );
+                          const j = await res.json();
+                          if (j.ok) {
+                            toast.success("Payment dikonfirmasi");
+                            refresh();
+                          } else {
+                            toast.danger("Gagal", j.error);
+                          }
+                        }}
+                      >
+                        Verifikasi & Konfirmasi
+                      </Button>
+                    ) : null}
                     {p.status === "paid" ? (
                       <a
                         href={`/api/payments/${p.id}/invoice`}

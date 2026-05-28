@@ -220,14 +220,17 @@ function PaymentsInner() {
 
   const confirm = async () => {
     if (!intent) return;
-    if (config.paymentMode !== "midtrans") {
-      // For manual / mixed (transfer / QRIS static), the customer is
-      // confirming they have transferred. Backend marks pending and waits
-      // for admin manual reconciliation; for now we still call confirm
-      // (mock). In production this endpoint should require receipt upload.
-    }
     setSubmitting(true);
-    const res = await customer.confirmPayment(intent.paymentId);
+    let res;
+    if (method === "transfer" || method === "qris") {
+      // Manual flow → claim, admin verifies later.
+      res = await customer.claimPayment(intent.paymentId, {});
+    } else {
+      // Midtrans flow → real confirm comes via webhook; this endpoint is
+      // admin-only, so customer-side just optimistically closes the modal.
+      // We still hit the claim endpoint to record the intent.
+      res = await customer.claimPayment(intent.paymentId, {});
+    }
     setSubmitting(false);
     setConfirmOpen(false);
     if (!res.ok) return toast.danger("Gagal", res.error);

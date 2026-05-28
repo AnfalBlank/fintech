@@ -5,6 +5,7 @@ import { fail, ok, parseJson } from "@/lib/api";
 import { createSession, SESSION_COOKIE } from "@/lib/auth";
 import { audit } from "@/lib/services";
 import { bindDevice } from "@/lib/device";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 
@@ -14,6 +15,12 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const limited = await enforceRateLimit(req, "otp-verify", {
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   const parsed = await parseJson(req, Body);
   if (!parsed.ok) return fail(parsed.error, 400);
   const { phone, code } = parsed.data;
